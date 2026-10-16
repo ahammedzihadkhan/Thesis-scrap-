@@ -134,7 +134,7 @@ pip install numpy pandas scikit-learn matplotlib nbformat nbclient
 ### 3. Running the Complete Pipeline
 Run the master pipeline script:
 ```bash
-python run_all_agents.py
+python main.py
 ```
 *The script will automatically detect or download the dataset, execute Agents 1 through 5, generate all evaluation figures, and output the marketing priority queue.*
 
@@ -148,7 +148,7 @@ Open and run `Extended_RFM_Single_Dataset_Colab.ipynb` locally or in Google Cola
 ```
 ├── Extended_RFM_Single_Dataset_Colab.ipynb  # Interactive Jupyter/Colab notebook
 ├── build_single_dataset_notebook.py        # Programmatic notebook builder
-├── run_all_agents.py                       # Master end-to-end execution pipeline
+├── main.py                                 # Master end-to-end execution pipeline
 ├── fig4_1_account_vs_guest_tx.png          # Visual: Account vs Guest distribution
 ├── fig4_2_single_vs_repeat_pie.png         # Visual: Single vs Repeat buyer breakdown
 ├── fig4_3_skewness_correction.png          # Visual: Log-transform distributions
