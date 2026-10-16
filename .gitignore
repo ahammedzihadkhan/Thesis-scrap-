@@ -1,0 +1,32 @@
+# Excluded as per project instructions
+ANTIGRAVITY_SINGLE_DATASET_AGENT.md
+
+# LaTeX reports, assets, and build artifacts
+*.tex
+report.txt
+single_dataset_overleaf_assets.zip
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+
+# Large raw datasets (auto-downloaded by run_all_agents.py via kagglehub / UCI)
+online_retail.csv
+data/
+*.xlsx
+
+# Python and Jupyter artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.pytest_cache/
+.env
+.venv/
+env/
+venv/

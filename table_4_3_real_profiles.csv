@@ -1,0 +1,5 @@
+Segment_Label,Customers,Share_Pct,Recency,Frequency,Monetary,InterPurchase_Time,Basket_Depth
+Champions (VIP Loyalists),515,11.9,12.38,16.51,10253.3,32.55,184.04
+Loyal & Promising Regulars,1180,27.2,33.21,4.66,1795.53,73.66,87.56
+High-Potential / At-Risk Guests,1071,24.7,102.95,2.68,763.65,107.31,32.34
+Hibernating / Lost Guests,1572,36.2,156.24,1.06,426.31,0.13,21.67
