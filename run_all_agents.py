@@ -1,5 +1,4 @@
 # ==============================================================================
-# MASTER RUNNER: AGENTS 1-5  (Single Canonical Dataset - Online Retail)
 # Thesis: E-Commerce Customer Segmentation via Extended RFM Modeling & ML
 # Batch 62, Department of CSE, City University, Bangladesh
 # ==============================================================================
