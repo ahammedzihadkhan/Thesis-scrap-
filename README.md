@@ -1,10 +1,13 @@
-# E-Commerce Customer Segmentation via Extended RFM Modeling and Unsupervised Machine Learning
+# 🛍️ KroyPulse — Universal Retail & F-Commerce Customer Segmentation Web App
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.35+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-4.x-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Machine Learning](https://img.shields.io/badge/Unsupervised%20ML-K--Means%20|%20DBSCAN%20|%20Hierarchical-orange.svg)]()
 
-> **Undergraduate Thesis Project**  
+> **Undergraduate Thesis Interactive System & Decision Support Platform**  
 > **Department of Computer Science & Engineering, City University, Bangladesh**  
 > **Supervisor:** Monoara Sultana Morzina, Lecturer, Department of CSE  
 > **Authors:**  
@@ -15,163 +18,214 @@
 
 ---
 
-## 📌 Executive Summary
+## 📌 Overview
 
-Traditional customer segmentation predominantly relies on standard **RFM (Recency, Frequency, Monetary)** models, which overlook critical temporal cadence and product discovery dynamics. This research proposes an **Extended RFM Framework ($R, F, M, T, D$)**, incorporating **Inter-Purchase Time ($T$)** and **Basket Depth ($D$)** alongside classical RFM metrics.
+**KroyPulse** is an interactive, enterprise-grade web application bringing our thesis methodology — **Extended 5D RFM Modeling ($R, F, M, T, D$) & Unsupervised Machine Learning** — into real-world operational retail, F-Commerce (Facebook Commerce), and WhatsApp commerce environments.
 
-By applying this model to $541,909$ transactional records ($392,692$ cleaned transactions across $4,338$ distinct customers) from the canonical UCI / Kaggle Online Retail dataset, our multi-agent machine learning pipeline identifies **4 distinct behavioral customer segments**. The discovered segments directly drive automated, targeted marketing interventions with prioritized operational queues.
-
----
-
-## 🔬 Mathematical Framework: Extended RFM ($R, F, M, T, D$)
-
-For each unique customer $i \in \{1, 2, \dots, N\}$ evaluated at reference snapshot date $t_{\text{ref}} = \max(\text{InvoiceDate}) + 1\text{ day}$:
-
-1. **Recency ($R$)**: Days elapsed since the customer's most recent completed order:
-   $$R_i = t_{\text{ref}} - \max(t_{i, j})$$
-2. **Frequency ($F$)**: Total number of distinct completed transactions:
-   $$F_i = |\{ \text{InvoiceNo}_{i, j} \}|$$
-3. **Monetary Value ($M$)**: Total cumulative monetary expenditure:
-   $$M_i = \sum_{j} (\text{Quantity}_{i, j} \times \text{UnitPrice}_{i, j})$$
-4. **Inter-Purchase Time ($T$)**: Mean temporal interval (in days) between consecutive purchases ($T_i = 0$ for single-purchase customers):
-   $$T_i = \frac{1}{F_i - 1} \sum_{k=1}^{F_i - 1} (\tau_{i, k+1} - \tau_{i, k}) \quad (F_i \ge 2)$$
-5. **Basket Depth ($D$)**: Breadth of product catalog exploration measured by unique item stock codes:
-   $$D_i = |\{ \text{StockCode}_{i, j} \}|$$
+While traditional segmentation systems require rigid customer accounts and only track Recency, Frequency, and Monetary value, **KroyPulse** addresses the real-world friction of social commerce:
+1. **Zero-Account Identity Stitching:** Heuristically links guest orders and social chats into unified customer profiles using normalized phone numbers and transaction graphs.
+2. **5D Extended RFM Metric Engine:** Ingests transaction data and computes $R$ (Recency), $F$ (Frequency), $M$ (Monetary), $T$ (Inter-Purchase Cadence), and $D$ (Basket Depth / Catalog Breadth).
+3. **Interactive 3D Cluster Visualizer:** Renders high-dimensional customer cohorts in real-time.
+4. **Multi-Channel Campaign Studio:** Generates click-to-chat WhatsApp direct links (`wa.me`), Messenger prompts, personalized discount codes, and CSV queue exports.
+5. **Live POS / Single-Customer Predictor:** Classifies any incoming buyer on-the-fly at the point of sale.
 
 ---
 
-## 📊 Discovered Customer Segments ($k=4$)
+## 📸 Application Screenshots
 
-Based on K-Means clustering ($k=4$), the customer base partitions into four distinct behavioral cohorts:
+<div align="center">
+  <h3>Tab 1: Store Overview & Guest Identity Resolution</h3>
+  <img src="screen-home.png" alt="KroyPulse Store Overview" width="950" />
+</div>
 
-| Cluster | Segment Label | Customers ($N$) | Population Share | Mean Recency ($R$) | Mean Frequency ($F$) | Mean Monetary ($M$) | Mean Inter-Purchase ($T$) | Mean Basket Depth ($D$) | Primary Marketing Strategy |
-|:---:|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---|
-| **0** | **Champions (VIP Loyalists)** | 515 | 11.9% | 12.4 days | 16.5 orders | $10,253.30 | 32.6 days | 184.0 SKUs | VIP loyalty rewards, exclusive early access, dedicated concierge |
-| **1** | **Loyal & Promising Regulars** | 1,180 | 27.2% | 33.2 days | 4.7 orders | $1,795.53 | 73.7 days | 87.6 SKUs | Cross-selling, volume incentive bundles, referral programs |
-| **2** | **High-Potential / At-Risk Guests** | 1,071 | 24.7% | 103.0 days | 2.7 orders | $763.65 | 107.3 days | 32.3 SKUs | Win-back discount triggers, personalized dynamic re-engagement |
-| **3** | **Hibernating / Lost Guests** | 1,572 | 36.2% | 156.2 days | 1.1 orders | $426.31 | 0.1 days | 21.7 SKUs | Low-cost automated email reactivation, clearance / steep discount campaigns |
+<br />
 
----
+<div align="center">
+  <h3>Tab 4: WhatsApp & Social Multi-Channel Campaign Studio</h3>
+  <img src="screen-tab4-campaigns.png" alt="Campaign Studio" width="950" />
+</div>
 
-## 🏆 Algorithm Benchmark & Validation
+<br />
 
-Clustering quality was rigorously evaluated against multiple unsupervised architectures:
+<div align="center">
+  <h3>Tab 5: Live POS / Real-Time Single-Customer Predictor</h3>
+  <img src="screen-tab5-pos.png" alt="Live POS Predictor" width="950" />
+</div>
 
-| Algorithm | Clusters ($k$) | Silhouette Score ($\uparrow$) | Davies-Bouldin Index ($\downarrow$) | Noise Ratio | Execution Time |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **K-Means (Selected)** | **4** | **0.3113** | **1.2442** | **0.0%** | **0.09s** |
-| Hierarchical (Ward Linkage) | 4 | 0.2949 | 1.3103 | 0.0% | 1.05s |
-| DBSCAN ($\epsilon=0.8, \text{minPts}=10$) | 3 | 0.0000 | 0.0000 | 3.07% | 0.27s |
+<br />
 
-*K-Means ($k=4$) yielded the highest Silhouette Score (0.3113) and lowest Davies-Bouldin Index (1.2442) with zero noise penalty and near-instantaneous convergence.*
-
----
-
-## 📈 Pipeline Visualizations
-
-| Figure | Description | File |
-|:---|:---|:---|
-| **Fig 4.1** | Account vs. Unregistered Guest Transactions | `fig4_1_account_vs_guest_tx.png` |
-| **Fig 4.2** | Single-Order Customers vs. Repeat Buyers | `fig4_2_single_vs_repeat_pie.png` |
-| **Fig 4.3** | Feature Distribution & $\log(1+x)$ Skewness Correction | `fig4_3_skewness_correction.png` |
-| **Fig 4.4** | Optimal $k$ Selection (Elbow WCSS & Silhouette Curve) | `fig4_4_elbow_silhouette.png` |
-| **Fig 4.5** | 3D Feature Space Projections Across Segments | `fig4_5_3d_clusters.png` |
-| **Fig 4.6** | Multi-Dimensional Segment Radar & Feature Profiles | `fig4_6_segment_profiles.png` |
-| **Fig 4.7** | Automated Marketing Priority Dispatch Queue | `fig4_7_final_marketing_queue.png` |
+<div align="center">
+  <h3>Personalized Dynamic Customer Offer Modal</h3>
+  <img src="screen-offer-modal.png" alt="Offer Modal" width="750" />
+</div>
 
 ---
 
-## ⚙️ Multi-Agent Architecture
+## 🔬 Mathematical Framework: Extended 5D RFM
 
-The pipeline is organized into five modular autonomous stages:
+For each unique customer $i \in \{1, 2, \dots, N\}$ evaluated at reference snapshot date $t_{\text{ref}} = \max(\text{OrderDate}) + 1\text{ day}$:
 
-```
-[Agent 1: Data Acquisition & Hygiene]
-       │  • Loads/downloads Online Retail dataset
-       │  • Eliminates cancellations, negative quantities & invalid prices
-       │  • Separates 135,080 guest rows; produces 392,692 valid customer records
-       ▼
-[Agent 2: Extended RFM Feature Engineering]
-       │  • Computes R, F, M, T, D across 4,338 customers
-       │  • Applies log1p transform to resolve heavy right-tail skewness
-       │  • Standardizes features via Z-score scaling
-       ▼
-[Agent 3: Unsupervised Machine Learning]
-       │  • Evaluates K-Means across k in [2, 10]
-       │  • Benchmarks against Ward Hierarchical Clustering & DBSCAN
-       │  • Selects optimal k=4 configuration
-       ▼
-[Agent 4: Behavioral Profiling & Marketing Automation]
-       │  • Orders clusters by customer lifetime monetary contribution
-       │  • Assigns business action tags & marketing priorities (P1-P4)
-       │  • Generates full queue: final_marketing_queue_full_4338.csv
-       ▼
-[Agent 5: Reproducibility & Colab Notebook Generation]
-          • Builds and validates Extended_RFM_Single_Dataset_Colab.ipynb
-```
+$$\begin{aligned}
+R_i &= t_{\text{ref}} - \max(t_{i, j}) && \text{(Recency: Days since last completed purchase)} \\
+F_i &= |\{ \text{OrderID}_{i, j} \}| && \text{(Frequency: Total distinct order count)} \\
+M_i &= \sum_{j} (\text{Quantity}_{i, j} \times \text{UnitPrice}_{i, j}) && \text{(Monetary: Total cumulative spend)} \\
+T_i &= \frac{1}{F_i - 1} \sum_{k=1}^{F_i - 1} (\tau_{i, k+1} - \tau_{i, k}) && \text{(Inter-Purchase Time: Temporal interval between orders, } F_i \ge 2\text{)} \\
+D_i &= |\{ \text{ItemCode}_{i, j} \}| && \text{(Basket Depth: Distinct SKUs / catalog discovery)}
+\end{aligned}$$
+
+### Feature Preprocessing & Scaling
+- **$\log(1+x)$ Transformation:** Resolves extreme positive skewness in retail spend and order distributions.
+- **Z-Score Normalization:** Fits features onto standardized unit variance: $z = \frac{x - \mu}{\sigma}$.
+
+---
+
+## 🎯 Discovered Behavioral Segments ($k=4$)
+
+| Cluster | Segment Persona | Strategic Description | Recommended Action |
+|:---:|:---|:---|:---|
+| **0** | 🌟 **Champions (VIP Loyalists)** | Highest spend, frequent orders, rapid reorder cadence, wide product exploration. | VIP concierge, exclusive early access, zero-friction perks. |
+| **1** | 🚀 **Loyal & Promising Regulars** | Steady recurring orders, reliable spend, high potential for lifetime value growth. | Cross-sell recommendations, bundle incentives, loyalty tier unlocks. |
+| **2** | ⚠️ **High-Potential / At-Risk Guests** | Substantial past spend whose purchase cadence is slipping; high churn vulnerability. | Automated win-back discounts, personalized re-engagement via WhatsApp. |
+| **3** | 💤 **Hibernating / Lost Guests** | One-off buyers or long-inactive accounts with low basket diversity. | Clearance promotions, low-cost reactivation blasts, churn win-back. |
+
+---
+
+## ⚡ Core Web Application Modules
+
+### 📊 Tab 1: Store Overview & Data Hygiene
+- Real-time guest order resolution and duplicate removal.
+- Metrics for total revenue, average order value (AOV), guest checkout share, and recovered repeat buyer count.
+- Smart Column Mapper supporting custom CSV and Excel schemas with fuzzy column header matching.
+
+### 🎯 Tab 2: Extended RFM Segments & 3D Explorer
+- Interactive 3D Scatter Plot built with Three.js / Plotly for multi-dimensional cluster exploration.
+- Cohort breakdown by population share, monetary contribution, and average inter-purchase days.
+
+### 🔬 Tab 3: Machine Learning Validation & Benchmark
+- Algorithmic evaluation across **K-Means++**, **Ward Hierarchical Clustering**, and **DBSCAN**.
+- Silhouette Score, Davies-Bouldin Index, and cluster size distribution validity checks ($2\% - 80\%$).
+
+### 💬 Tab 4: Multi-Channel Campaign Studio & Dispatch
+- Click-to-chat WhatsApp direct engine (`https://wa.me/{phone}?text={custom_message}`).
+- Facebook Messenger & Email campaign triggers.
+- Campaign ROI Forecaster with conversion probability, expected revenue, and profit simulations.
+- Bulk export ready for WhatsApp Business API and CRM systems.
+
+### ⚡ Tab 5: Live POS / Single-Customer Segment Predictor
+- Instant classification for store cashiers, live-chat agents, and phone operators.
+- Computes nearest centroid distance and suggests targeted up-sell / retention tactics during live checkout.
 
 ---
 
 ## 🚀 Getting Started
 
-### 1. Prerequisites
-- Python 3.9 or higher
-- Git
+KroyPulse provides **two complementary interfaces**:
+1. **Modern React Web App** (Full-featured production UI with Tailwind CSS & animations).
+2. **Streamlit App** (Rapid Python interactive environment for defense presentations).
 
-### 2. Installation
-Clone the repository and install dependencies:
+---
+
+### Option A: Modern React Web Application (Recommended)
+
+#### 1. Prerequisites
+- **Node.js** (v18.0.0 or higher)
+- **npm** or **bun**
+
+#### 2. Installation
 ```bash
-git clone <YOUR_REPO_URL>
-cd <REPO_DIRECTORY>
+# Clone the repository
+git clone https://github.com/ahammedzihadkhan/Thesis-scrap-.git
+cd Thesis-scrap-
+
+# Switch to the web-app branch
+git checkout web-app
+
+# Install dependencies
+npm install
+```
+
+#### 3. Environment Setup (Optional)
+If you wish to enable server-side Gemini AI features:
+```bash
+cp .env.example .env.local
+# Add your GEMINI_API_KEY in .env.local
+```
+
+#### 4. Launch Development Server
+```bash
+npm run dev
+```
+Open your browser at `http://localhost:3000` to interact with the full application.
+
+---
+
+### Option B: Streamlit Python Web Application
+
+#### 1. Prerequisites
+- **Python 3.9+**
+
+#### 2. Installation
+```bash
 pip install -r requirements.txt
 ```
 
-*(Or install core dependencies directly)*:
+#### 3. Launch Streamlit
 ```bash
-pip install numpy pandas scikit-learn matplotlib nbformat nbclient
+streamlit run app.py
 ```
-
-### 3. Running the Complete Pipeline
-Run the master pipeline script:
-```bash
-python main.py
-```
-*The script will automatically detect or download the dataset, execute Agents 1 through 5, generate all evaluation figures, and output the marketing priority queue.*
-
-### 4. Interactive Jupyter / Google Colab Notebook
-Open and run `Extended_RFM_Single_Dataset_Colab.ipynb` locally or in Google Colab for interactive step-by-step exploration with inline visualizations.
+Open your browser at `http://localhost:8501`.
 
 ---
 
-## 📁 Repository Structure
+## 📁 Repository Structure (`web-app` branch)
 
 ```
-├── Extended_RFM_Single_Dataset_Colab.ipynb  # Interactive Jupyter/Colab notebook
-├── build_single_dataset_notebook.py        # Programmatic notebook builder
-├── main.py                                 # Master end-to-end execution pipeline
-├── fig4_1_account_vs_guest_tx.png          # Visual: Account vs Guest distribution
-├── fig4_2_single_vs_repeat_pie.png         # Visual: Single vs Repeat buyer breakdown
-├── fig4_3_skewness_correction.png          # Visual: Log-transform distributions
-├── fig4_4_elbow_silhouette.png             # Visual: Optimal cluster selection curves
-├── fig4_5_3d_clusters.png                  # Visual: 3D cluster projection
-├── fig4_6_segment_profiles.png             # Visual: Normalized segment feature profiles
-├── fig4_7_final_marketing_queue.png        # Visual: Marketing dispatch priorities
-├── final_marketing_queue_full_4338.csv      # Operational marketing queue (4,338 customers)
-├── table_4_1_real_evaluation.csv           # K-Means evaluation metrics (k=2 to 10)
-├── table_4_2_algo_benchmark.csv            # Algorithm comparison metrics
-├── table_4_3_real_profiles.csv             # Final segment feature statistics
-├── .gitignore                              # Git exclusion rules
-└── README.md                               # Project documentation
+kroypulse/
+├── public/                       # Static web assets & icons
+├── src/
+│   ├── components/               # React UI components
+│   │   ├── Tab1StoreOverview.tsx # Store analytics & data hygiene
+│   │   ├── Tab2SegmentsExplorer.tsx # 5D RFM personas & metrics
+│   │   ├── Tab3MLValidation.tsx  # Algorithm benchmark & cluster health
+│   │   ├── Tab4CampaignStudio.tsx# WhatsApp & Messenger campaign dispatcher
+│   │   ├── Tab5POSPredictor.tsx  # Live POS / real-time predictor
+│   │   ├── ScatterPlot3D.tsx     # Interactive 3D cluster plot
+│   │   ├── WhatsAppShopSection.tsx# F-Commerce order & catalog workflow
+│   │   └── WhatsAppBulkExportModal.tsx # WhatsApp queue exporter
+│   ├── data/                     # Preset data fixtures
+│   │   ├── bangladeshiWhatsAppShopData.ts # F-Commerce order sample
+│   │   └── darazSampleData.ts    # South Asian e-commerce sample
+│   ├── rfm/                      # Core analytics & ML engine
+│   │   ├── rfmCalculator.ts      # 5D RFM feature engineering
+│   │   ├── identityStitcher.ts   # Guest order resolution & phone graph
+│   │   ├── mlClustering.ts       # K-Means, Z-score scaling, Silhouette
+│   │   ├── recommendationEngine.ts # Dynamic personalized offers
+│   │   └── campaignForecaster.ts # ROI & conversion simulations
+│   ├── App.tsx                   # Main application layout & state
+│   ├── index.css                 # Global styling
+│   └── main.tsx                  # React entry point
+├── app.py                        # Python Streamlit alternative UI
+├── requirements.txt              # Python dependencies
+├── package.json                  # Node.js dependencies & scripts
+├── vite.config.ts                # Vite configuration
+├── tsconfig.json                 # TypeScript configuration
+├── metadata.json                 # Application metadata
+├── screen-home.png               # Application screenshot (Home)
+├── screen-tab4-campaigns.png     # Application screenshot (Campaign Studio)
+├── screen-tab5-pos.png           # Application screenshot (POS Predictor)
+├── screen-offer-modal.png        # Application screenshot (Offer Modal)
+├── screen-personalized-offers.png# Application screenshot (Personalized Offers)
+└── README.md                     # Documentation
 ```
 
 ---
 
-## 📜 Citation & Academic Use
+## 📜 Citation & Academic Attribution
 
-If this methodology or dataset pipeline supports your research, please reference:
+If you use this web application, extended RFM algorithms, or benchmark datasets in your research, please cite:
 
 ```bibtex
-@thesis{khan2026ecommerce,
+@thesis{khan2026kroypulse,
   author       = {Ahammed Zihad Khan and Shaheda Akter and Aurnob Saha and Md. Nazmul Hasan},
   title        = {E-Commerce Customer Segmentation via Extended RFM Modeling and Unsupervised Machine Learning},
   school       = {City University, Bangladesh},
