@@ -19,8 +19,10 @@ This repository holds three things:
 ```bash
 pip install -r thesis/requirements.txt   # numpy, pandas, scikit-learn, scipy, matplotlib, nbclient
 cd thesis/notebook
-python build_notebook.py                 # builds and runs Extended_RFM_Thesis.ipynb (~5 min)
+python build_notebook.py                 # builds and runs Extended_RFM_Thesis.ipynb (~30 min)
 ```
+
+Or run it in Google Colab without installing anything: [open the notebook in Colab](https://colab.research.google.com/github/ahammedzihadkhan/Thesis-scrap-/blob/main/thesis/notebook/Extended_RFM_Thesis.ipynb), then **Runtime → Run all**. The first cell fetches the project and the datasets download automatically.
 
 The UCI Online Retail file is downloaded automatically the first time (or place `online_retail.csv` in `thesis/data/`).
 Outputs go to `thesis/outputs/figures`, `thesis/outputs/tables` (CSV + LaTeX) and `thesis/outputs/results.json`.
