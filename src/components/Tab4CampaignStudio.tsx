@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { WhatsAppBulkExportModal } from './WhatsAppBulkExportModal';
+import { BulkSendModal } from './BulkSendModal';
 import { CampaignForecaster } from './CampaignForecaster';
 
 import { CleanedTransaction } from '../rfm/types';
@@ -54,6 +55,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
+  const [isBulkSendOpen, setIsBulkSendOpen] = useState(false);
   const [selectedRecCustomer, setSelectedRecCustomer] = useState<CustomerRFMTD | null>(null);
 
   // Compute personalized recommendations for all customers
@@ -310,14 +312,22 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
               />
             </div>
 
+            <button
+              onClick={() => setIsBulkSendOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+              <span>Send to everyone</span>
+            </button>
+
             {/* F-Commerce Bulk Messaging Exporter */}
             <button
               onClick={() => setIsBulkExportOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-              title="Export formatted CSV for ManyChat, Meta Messenger, WATI, AiSensy, etc."
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 hover:bg-emerald-50 rounded-lg shadow-xs transition-colors cursor-pointer"
+              title="Only needed if you use a bulk-messaging app such as WATI or AiSensy"
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>Export for F-Commerce Bulk Tools</span>
+              <span>Download list for bulk messaging</span>
             </button>
 
             {/* Standard CSV */}
@@ -862,6 +872,16 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
       </div>
 
       {/* WhatsApp Bulk Messaging Tool Export Modal */}
+      <BulkSendModal
+        isOpen={isBulkSendOpen}
+        onClose={() => setIsBulkSendOpen(false)}
+        customers={customers}
+        shopName={shopName}
+        currencySymbol={currencySymbol}
+        campaignConfigs={campaignConfigs}
+        recommendationsMap={recommendationsMap}
+      />
+
       <WhatsAppBulkExportModal
         isOpen={isBulkExportOpen}
         onClose={() => setIsBulkExportOpen(false)}

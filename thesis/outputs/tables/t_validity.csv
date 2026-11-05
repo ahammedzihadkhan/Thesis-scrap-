@@ -1,0 +1,9 @@
+Algorithm,Noise (%),Smallest (%),Largest (%),Valid
+K-Means,0.0,11.87,36.24,True
+Ward,0.0,11.96,36.01,True
+Average linkage,0.0,0.02,99.45,False
+Complete linkage,0.0,0.14,88.68,False
+Gaussian mixture,0.0,19.13,34.42,True
+"DBSCAN (0.8, 10)",3.07,100.0,100.0,False
+HDBSCAN (min size 50),20.61,40.04,59.96,True
+BIRCH,0.0,3.94,49.08,True

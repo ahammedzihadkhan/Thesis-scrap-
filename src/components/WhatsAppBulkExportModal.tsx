@@ -1,31 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import {
-  CustomerRFMTD,
-  PersonaType,
-  CampaignConfig,
-  WhatsAppBulkToolFormat,
-  WHATSAPP_BULK_TOOL_SPECS,
-} from '../rfm/types';
-import {
-  generateWhatsAppBulkExport,
-  formatE164Phone,
-} from '../rfm/whatsappBulkExporter';
-import { PERSONA_METAS } from '../rfm/mlClustering';
-import {
-  X,
-  Download,
-  Copy,
-  Check,
-  FileSpreadsheet,
-  Smartphone,
-  Info,
-  Layers,
-  Sparkles,
-  PhoneCall,
-  ExternalLink,
-} from 'lucide-react';
-import confetti from 'canvas-confetti';
-
+import { CustomerRFMTD, PersonaType, CampaignConfig, WhatsAppBulkToolFormat } from '../rfm/types';
+import { generateWhatsAppBulkExport } from '../rfm/whatsappBulkExporter';
+import { X, Download, Info, ChevronDown, ShieldCheck } from 'lucide-react';
 import { CustomerRecommendationProfile } from '../rfm/recommendationEngine';
 
 interface WhatsAppBulkExportModalProps {
@@ -38,6 +14,27 @@ interface WhatsAppBulkExportModalProps {
   recommendationsMap?: Map<string, CustomerRecommendationProfile>;
 }
 
+// Plain-language labels; the file formats themselves are defined in rfm/types.ts.
+const SIMPLE: { id: WhatsAppBulkToolFormat; name: string; hint: string } = {
+  id: 'clean_phone_list',
+  name: 'Simple list (Excel / any app)',
+  hint: 'Phone, name, group and the ready message. Open it in Excel or upload it to most bulk-messaging apps.',
+};
+const APPS: { id: WhatsAppBulkToolFormat; name: string; hint: string }[] = [
+  { id: 'wati_aisensy', name: 'WATI, AiSensy or Interakt', hint: 'Official WhatsApp Business apps.' },
+  { id: 'generic_extension', name: 'WhatsApp sender Chrome extension', hint: 'Browser extensions that send one message after another.' },
+  { id: 'gallabox_quickreply', name: 'Gallabox or QuickReply', hint: 'Includes tags and offer fields.' },
+  { id: 'manychat_messenger', name: 'ManyChat / Facebook Messenger', hint: 'For customers you reach on Messenger instead of WhatsApp.' },
+  { id: 'fcommerce_multichannel', name: 'WhatsApp + Messenger together', hint: 'Uses WhatsApp when there is a phone number, Messenger otherwise.' },
+];
+export const GROUPS: [PersonaType | 'All', string][] = [
+  ['All', 'Everyone'],
+  ['Champions (VIP Loyalists)', 'Best customers'],
+  ['Loyal & Promising Regulars', 'Regular customers'],
+  ['High-Potential / At-Risk Guests', 'Slipping away'],
+  ['Hibernating / Lost Guests', 'Inactive / one-time'],
+];
+
 export const WhatsAppBulkExportModal: React.FC<WhatsAppBulkExportModalProps> = ({
   isOpen,
   onClose,
@@ -47,276 +44,123 @@ export const WhatsAppBulkExportModal: React.FC<WhatsAppBulkExportModalProps> = (
   campaignConfigs,
   recommendationsMap,
 }) => {
-  const [selectedFormat, setSelectedFormat] = useState<WhatsAppBulkToolFormat>('wati_aisensy');
+  const [selectedFormat, setSelectedFormat] = useState<WhatsAppBulkToolFormat>(SIMPLE.id);
   const [selectedSegment, setSelectedSegment] = useState<PersonaType | 'All'>('All');
-  const [onlyValidPhones, setOnlyValidPhones] = useState(true);
-  const [copiedPhones, setCopiedPhones] = useState(false);
+  const [showApps, setShowApps] = useState(false);
 
-  // Generate export preview & file content
-  const exportData = useMemo(() => {
-    return generateWhatsAppBulkExport(customers, {
-      toolFormat: selectedFormat,
-      segmentFilter: selectedSegment,
-      onlyValidPhones,
-      shopName,
-      currencySymbol,
-      campaignConfigs,
-      recommendationsMap,
-    });
-  }, [
-    customers,
-    selectedFormat,
-    selectedSegment,
-    onlyValidPhones,
-    shopName,
-    currencySymbol,
-    campaignConfigs,
-    recommendationsMap,
-  ]);
-
+  const exportData = useMemo(
+    () =>
+      generateWhatsAppBulkExport(customers, {
+        toolFormat: selectedFormat,
+        segmentFilter: selectedSegment,
+        // Messenger formats can reach customers without a phone number.
+        onlyValidPhones: selectedFormat !== 'manychat_messenger' && selectedFormat !== 'fcommerce_multichannel',
+        shopName,
+        currencySymbol,
+        campaignConfigs,
+        recommendationsMap,
+      }),
+    [customers, selectedFormat, selectedSegment, shopName, currencySymbol, campaignConfigs, recommendationsMap]
+  );
 
   if (!isOpen) return null;
 
   const handleDownload = () => {
-    const encodedUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(exportData.csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', exportData.filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+    const blob = new Blob(['﻿' + exportData.csvContent], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = exportData.filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
-  const handleCopyPhoneNumbers = () => {
-    const numbers = exportData.sampleRows
-      .map((r) => r.phone_number || r.Phone || '')
-      .filter(Boolean);
+  const option = (o: { id: WhatsAppBulkToolFormat; name: string; hint: string }) => (
+    <label
+      key={o.id}
+      className={`flex gap-3 p-3 rounded-xl border cursor-pointer ${selectedFormat === o.id ? 'border-emerald-600 bg-emerald-50 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:bg-slate-50'}`}
+    >
+      <input type="radio" name="export-format" checked={selectedFormat === o.id} onChange={() => setSelectedFormat(o.id)} className="mt-1 accent-emerald-600" />
+      <span>
+        <span className="block text-sm font-bold text-slate-900">{o.name}</span>
+        <span className="block text-xs text-slate-500">{o.hint}</span>
+      </span>
+    </label>
+  );
 
-    // Get all valid phones from full filtered set
-    const allFilteredPhones = customers
-      .filter((c) => selectedSegment === 'All' || c.persona === selectedSegment)
-      .map((c) => formatE164Phone(c.phone))
-      .filter(Boolean);
-
-    navigator.clipboard.writeText(allFilteredPhones.join(', '));
-    setCopiedPhones(true);
-    setTimeout(() => setCopiedPhones(false), 2000);
-  };
+  const sample = exportData.sampleRows[0];
+  const sampleMessage = sample && (sample.Message_Text || sample.custom_message || sample.Message || sample['Message Content'] || sample.message_content);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-emerald-50 via-teal-50 to-white">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs">
-              <Smartphone className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-900">
-                  Export for F-Commerce Bulk Messaging & Messenger Broadcast
-                </h2>
-                <span className="text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded-full">
-                  Messenger & WhatsApp
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Generate pre-structured CSV files ready for ManyChat, Meta Messenger Broadcast, WATI, AiSensy, or Chrome extensions.
-              </p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-export-title">
+      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
+          <div>
+            <h2 id="bulk-export-title" className="text-lg font-extrabold text-slate-900">Download a list to message many customers at once</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              This makes a file of your customers with a ready message for each one. You only need it if you use a
+              bulk-messaging app. <strong>Not using one?</strong> Close this and press the green WhatsApp button next to
+              each customer — it opens WhatsApp with the message already written.
+            </p>
           </div>
-
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
-            aria-label="Close bulk export modal"
-          >
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-xs">
-          {/* Tool Format Selector */}
-          <div>
-            <label className="block text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-emerald-600" />
-              <span>Select Your F-Commerce Platform / Dispatch Format</span>
-            </label>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {(Object.keys(WHATSAPP_BULK_TOOL_SPECS) as WhatsAppBulkToolFormat[]).map((fmtKey) => {
-                const spec = WHATSAPP_BULK_TOOL_SPECS[fmtKey];
-                const isSelected = selectedFormat === fmtKey;
-                const isMessenger = fmtKey === 'manychat_messenger' || fmtKey === 'fcommerce_multichannel';
-
-                return (
-                  <div
-                    key={fmtKey}
-                    onClick={() => setSelectedFormat(fmtKey)}
-                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                      isSelected
-                        ? isMessenger
-                          ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/30'
-                          : 'border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-500/30'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/70 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-slate-900 text-xs flex items-center gap-1">
-                        {isMessenger && <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>}
-                        <span>{spec.name}</span>
-                      </span>
-                      <span
-                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                          isSelected
-                            ? isMessenger
-                              ? 'border-blue-600 bg-blue-600 text-white'
-                              : 'border-emerald-600 bg-emerald-600 text-white'
-                            : 'border-slate-300 bg-white'
-                        }`}
-                      >
-                        {isSelected && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-snug">{spec.description}</p>
-                    <div className="mt-2 text-[10px] text-slate-400 font-mono">
-                      Cols: {spec.headers.slice(0, 4).join(', ')}...
-                    </div>
-                  </div>
-                );
-              })}
+        <div className="p-6 overflow-y-auto space-y-5">
+          <section>
+            <h3 className="text-sm font-extrabold text-slate-900 mb-2">1. Who should get the message?</h3>
+            <div className="flex flex-wrap gap-2">
+              {GROUPS.map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setSelectedSegment(value)}
+                  aria-pressed={selectedSegment === value}
+                  className={`px-3 py-1.5 rounded-full text-sm font-semibold border cursor-pointer ${selectedSegment === value ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          </div>
+          </section>
 
-          {/* Segment Filter & Validation Options */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1.5">
-                Target Customer Segment
-              </label>
-              <select
-                value={selectedSegment}
-                onChange={(e) => setSelectedSegment(e.target.value as any)}
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-              >
-                <option value="All">All Segments ({customers.length} total customers)</option>
-                <option value="Champions (VIP Loyalists)">Champions (VIP Loyalists) only</option>
-                <option value="Loyal & Promising Regulars">Loyal & Promising Regulars only</option>
-                <option value="High-Potential / At-Risk Guests">High-Potential / At-Risk Guests only</option>
-                <option value="Hibernating / Lost Guests">Hibernating / Lost Guests (Win-Back Queue)</option>
-              </select>
+          <section>
+            <h3 className="text-sm font-extrabold text-slate-900 mb-2">2. Which file do you need?</h3>
+            <div className="space-y-2">
+              {option(SIMPLE)}
+              <button onClick={() => setShowApps((v) => !v)} aria-expanded={showApps} className="text-sm font-semibold text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1 cursor-pointer">
+                <ChevronDown className={`w-4 h-4 transition-transform ${showApps ? 'rotate-180' : ''}`} /> I use a specific app
+              </button>
+              {showApps && <div className="grid sm:grid-cols-2 gap-2">{APPS.map(option)}</div>}
             </div>
+          </section>
 
-            <div className="flex flex-col justify-end space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={onlyValidPhones}
-                  onChange={(e) => setOnlyValidPhones(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-                />
-                <span className="font-semibold text-slate-800">
-                  Strict WhatsApp phone filter (for WA-only tools)
-                </span>
-              </label>
-              <span className="text-[11px] text-slate-500">
-                {selectedFormat === 'manychat_messenger' || selectedFormat === 'fcommerce_multichannel'
-                  ? 'Messenger & Unified formats automatically target customers via their Facebook Messenger ID if phone is missing.'
-                  : 'Skips customers without a verified phone number to prevent broadcast bounces.'}
-              </span>
-            </div>
-          </div>
-
-          {/* Stats Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-50/70 border border-emerald-200 rounded-xl px-4 py-2.5">
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-emerald-950">
-                Ready for Export:{' '}
-                <strong className="text-emerald-700 text-sm">
-                  {exportData.validPhoneCount} Numbers
-                </strong>
-              </span>
+          <section className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+            <p className="text-sm text-slate-800">
+              <strong>{exportData.validPhoneCount.toLocaleString()}</strong> customers will be in the file.
               {exportData.skippedPhoneCount > 0 && (
-                <span className="text-[11px] text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
-                  {exportData.skippedPhoneCount} skipped (no phone)
-                </span>
+                <span className="text-slate-500"> {exportData.skippedPhoneCount.toLocaleString()} left out because they have no phone number.</span>
               )}
-            </div>
+            </p>
+            {sampleMessage && <p className="text-xs text-slate-600 mt-2">Example message: <em>“{sampleMessage}”</em></p>}
+          </section>
 
-            <button
-              onClick={handleCopyPhoneNumbers}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-2xs"
-              title="Copy all phone numbers as comma-separated text"
-            >
-              {copiedPhones ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-emerald-600" />}
-              <span>{copiedPhones ? 'Copied Numbers!' : 'Copy Numbers List'}</span>
-            </button>
-          </div>
-
-          {/* Live Preview Table */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-            <div className="px-3.5 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider">
-                Generated CSV Preview ({exportData.headers.length} columns)
-              </span>
-              <span className="text-[10px] text-slate-500 font-mono">{exportData.filename}</span>
-            </div>
-
-            <div className="overflow-x-auto max-h-48">
-              <table className="w-full text-left text-[11px] border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-mono">
-                    {exportData.headers.map((h) => (
-                      <th key={h} className="py-2 px-3 whitespace-nowrap">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-mono">
-                  {exportData.sampleRows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      {exportData.headers.map((h) => (
-                        <td
-                          key={h}
-                          className="py-1.5 px-3 max-w-[200px] truncate text-slate-700"
-                          title={row[h]}
-                        >
-                          {row[h] || '—'}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <p className="text-xs text-slate-500 flex gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            Only message customers who agreed to hear from you, and include a way to stop messages. The file is created on this computer and is not sent anywhere.
+          </p>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-          <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5 text-slate-400" />
-            <span>Compatible with all standard WhatsApp Cloud API & Broadcast tools</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg cursor-pointer"
-            >
-              Cancel
-            </button>
+        <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+          <span className="text-xs text-slate-500 hidden sm:inline-flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> Opens in Excel or Google Sheets</span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg cursor-pointer">Cancel</button>
             <button
               onClick={handleDownload}
-              className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors cursor-pointer"
+              disabled={exportData.validPhoneCount === 0}
+              className="inline-flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg cursor-pointer disabled:opacity-50"
             >
-              <Download className="w-4 h-4" />
-              <span>Download WhatsApp Bulk CSV</span>
+              <Download className="w-4 h-4" /> Download file
             </button>
           </div>
         </div>

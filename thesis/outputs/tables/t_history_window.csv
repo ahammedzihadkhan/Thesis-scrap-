@@ -1,0 +1,5 @@
+History window (days),Cohort,Mean orders in window,Repurchase next 90 days (%),Repurchase AUC,Spend Spearman,Bootstrap ARI,ARI vs final segment
+30,1875,1.43,55.9,0.641,0.309,0.9412,0.0627
+60,1875,1.86,57.2,0.694,0.417,0.9367,0.0964
+90,1875,2.3,56.2,0.721,0.468,0.9442,0.1339
+180,1875,3.73,56.5,0.768,0.551,0.9537,0.2771

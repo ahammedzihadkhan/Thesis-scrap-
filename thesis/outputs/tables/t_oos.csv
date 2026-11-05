@@ -1,0 +1,13 @@
+Method,Segments,Repurchase AUC,Spend Spearman,Adj. R2 (log spend)
+No segmentation,1,0.5,-0.047,0.0
+Single guest rule (F=1 vs F>1),2,0.657,0.289,0.126
+Classic quintile RFM score (4 groups),4,0.715,0.457,0.217
+KM Extended RFM (k=2),2,0.679,0.343,0.166
+KM Extended RFM (k=3),3,0.704,0.434,0.217
+KM Extended RFM (k=4),4,0.712,0.452,0.22
+KM Extended RFM (k=5),5,0.723,0.489,0.248
+KM Extended RFM (k=6),6,0.727,0.499,0.251
+KM Extended RFM (k=8),8,0.731,0.501,0.254
+KM plain RFM (k=4),4,0.704,0.455,0.223
+KM RFM+T (k=4),4,0.706,0.435,0.22
+KM RFM+Depth (k=4),4,0.711,0.478,0.233

@@ -113,6 +113,9 @@ export interface CustomerRFMTD {
   interPurchaseTime: number; // Mean calendar days between consecutive orders
   basketDepth: number; // Distinct products/SKUs
   isSinglePurchase: boolean; // F = 1
+  tenureDays?: number; // Days from first purchase to the reference date
+  /** Early-Stage = first order within the last 90 days OR at most 2 orders (thesis Section 4.7). */
+  lifecycleStage?: 'Early-Stage' | 'Established';
   cluster?: number;
   persona?: PersonaType;
   pc1?: number;
@@ -187,6 +190,8 @@ export interface BenchmarkAlgorithmResult {
   isValid: boolean; // Cluster size within 2% - 80%
   statusNote: string;
   highlightKMeansWin?: boolean;
+  /** 'live' = computed on the loaded data; 'reference' = thesis Python result on UCI Online Retail. */
+  source?: 'live' | 'reference';
 }
 
 export interface ModelHealthMetrics {

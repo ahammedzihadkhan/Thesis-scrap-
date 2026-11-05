@@ -1,0 +1,9 @@
+Algorithm,Clusters,Silhouette,Noise (%),Largest (%),Valid
+K-Means,4,0.3553,0.0,37.02,True
+Ward,4,0.2937,0.0,30.16,True
+Average linkage,4,0.4407,0.0,75.21,False
+Complete linkage,4,0.2118,0.0,54.23,False
+Gaussian mixture,4,0.322,0.0,53.14,True
+"DBSCAN (0.8, 10)",5,0.3069,0.73,53.44,False
+HDBSCAN (min size 50),6,0.2271,5.69,55.9,True
+BIRCH,4,0.4165,0.0,73.83,False

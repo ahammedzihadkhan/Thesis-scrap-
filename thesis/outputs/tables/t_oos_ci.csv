@@ -1,0 +1,5 @@
+Comparison,Mean,95% CI low,95% CI high
+k=4 minus k=2,0.034,0.022,0.047
+Extended k=4 minus quintile RFM,-0.003,-0.015,0.009
+Extended k=4 minus plain RFM k=4,0.01,-0.003,0.026
+k=4 minus single guest rule,0.055,0.04,0.068

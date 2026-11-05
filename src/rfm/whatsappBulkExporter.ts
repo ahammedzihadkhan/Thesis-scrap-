@@ -5,6 +5,7 @@ import {
   WhatsAppBulkToolFormat,
   WHATSAPP_BULK_TOOL_SPECS,
 } from './types';
+import { csvSafe } from './dataCleaner';
 
 /**
  * Standardizes phone numbers to clean international E.164 digits without leading '+'
@@ -58,6 +59,7 @@ export interface BulkExportResult {
   skippedPhoneCount: number;
   headers: string[];
   sampleRows: Record<string, string>[];
+  rows: Record<string, string>[];
 }
 
 /**
@@ -93,9 +95,9 @@ export function generateWhatsAppBulkExport(
       validCount++;
     }
 
-    const customerName = c.customerKey.startsWith('cust_')
+    const customerName = c.customerName?.trim() || (c.customerKey.startsWith('cust_')
       ? `Customer #${c.customerKey.replace('cust_', '')}`
-      : c.phone || 'Valued Shopper';
+      : c.phone || 'Valued Shopper');
 
     const recProfile = recommendationsMap?.get(c.customerKey);
     const suggestedProduct = recProfile?.primaryRecommendation.productName || 'Handcrafted Featured Collection';
@@ -222,7 +224,7 @@ export function generateWhatsAppBulkExport(
   const csvHeaders = spec.headers;
   const escapeCSV = (val: string) => {
     if (val === undefined || val === null) return '""';
-    const s = String(val).replace(/"/g, '""');
+    const s = csvSafe(val).replace(/"/g, '""');
     return `"${s}"`;
   };
 
@@ -244,5 +246,6 @@ export function generateWhatsAppBulkExport(
     skippedPhoneCount: skippedCount,
     headers: csvHeaders,
     sampleRows: outputRows.slice(0, 5),
+    rows: outputRows,
   };
 }

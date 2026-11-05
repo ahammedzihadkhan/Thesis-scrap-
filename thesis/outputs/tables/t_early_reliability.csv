@@ -1,0 +1,3 @@
+Group,Same segment at end of data (%),ARI (cutoff vs end),Bootstrap ARI,Silhouette
+Early-stage,38.8,0.1596,0.974,0.3544
+Established,62.2,0.2667,0.4882,0.1957

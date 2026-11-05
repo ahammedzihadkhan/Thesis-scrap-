@@ -30,6 +30,7 @@ import {
   rankClustersToPersonas,
   runAlgorithmBenchmark,
   runTemporalHoldoutCheck,
+  bootstrapStabilityARI,
 } from './rfm/mlClustering';
 import Papa from 'papaparse';
 import {
@@ -57,6 +58,9 @@ import { Tab3MLValidation } from './components/Tab3MLValidation';
 import { Tab4CampaignStudio } from './components/Tab4CampaignStudio';
 import { Tab5POSPredictor } from './components/Tab5POSPredictor';
 import { WhatsAppShopSection } from './components/WhatsAppShopSection';
+import { DataCleanerTab } from './components/DataCleanerTab';
+import { HomeTab } from './components/HomeTab';
+import { autoCleanDataset } from './rfm/dataCleaner';
 
 import {
   LayoutDashboard,
@@ -70,12 +74,15 @@ import {
   Package,
   Sparkles,
   Upload,
+  Wand2,
+  Home,
 } from 'lucide-react';
 
 export default function App() {
   // Global settings & currency
   const [currency, setCurrency] = useState<CurrencyCode>('BDT');
-  const [activeTab, setActiveTab] = useState<'whatsapp_shop' | 1 | 2 | 3 | 4 | 5>('whatsapp_shop');
+  const [activeTab, setActiveTab] = useState<'home' | 'whatsapp_shop' | 'cleaner' | 1 | 2 | 3 | 4 | 5>('home');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string>(() => new Date().toLocaleTimeString());
@@ -161,7 +168,7 @@ export default function App() {
       daviesBouldinIndex: metrics.daviesBouldinIndex,
       calinskiHarabaszIndex: metrics.calinskiHarabaszIndex,
       hopkinsStatistic: hopkins,
-      bootstrapStabilityARI: 0.88,
+      bootstrapStabilityARI: bootstrapStabilityARI(featuresStandardized, k, kmResult.labels),
     };
 
     const benchmark = runAlgorithmBenchmark(
@@ -171,10 +178,7 @@ export default function App() {
       centroids
     );
 
-    const custMap = new Map(
-      customerListWithPersonas.map((c) => [c.customerKey, c.persona!])
-    );
-    const holdout = runTemporalHoldoutCheck(cleanedRows, custMap);
+    const holdout = runTemporalHoldoutCheck(cleanedRows, k);
 
     // Calculate optimization curves across k=2 to 8
     const history: { k: number; wcss: number; silhouette: number; db: number }[] = [];
@@ -287,7 +291,9 @@ export default function App() {
     }, 250);
   }, []);
 
-  const handleCustomDataLoaded = useCallback((data: RawTransaction[], fileName: string) => {
+  const handleCustomDataLoaded = useCallback((uploaded: RawTransaction[], fileName: string) => {
+    // Every upload is auto-cleaned first (formats dates, prices, phones; drops empty / duplicate rows).
+    const data = autoCleanDataset(uploaded).rows;
     if (data.length === 0) return;
     setIsLoading(true);
     setProcessingMessage(`Processing uploaded file "${fileName}" (${data.length.toLocaleString()} rows) in real-time...`);
@@ -385,6 +391,7 @@ export default function App() {
       />
 
       {/* Feature B: Data Hygiene & Guest Recovery Metric Bar */}
+      {activeTab !== 'home' && (
       <DataHygieneBar
         stats={hygieneStats}
         currentCurrency={currency}
@@ -398,188 +405,72 @@ export default function App() {
         onLoadUCISample={handleLoadUCISample}
         onLoadDarazSample={handleLoadDarazSample}
       />
+      )}
 
       {/* Main Tabbed Interface */}
       <main className="w-full max-w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 flex-1 space-y-4">
-        {/* Real-Time Active Dataset & Instant Switcher Bar */}
-        <div className="bg-emerald-950 text-white rounded-xl px-4 py-2.5 border border-emerald-800 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>LIVE REAL-TIME DATA SYNCED</span>
-            </span>
-            <span className="font-bold text-white">{datasetName}</span>
-            <span className="text-emerald-400 hidden sm:inline">·</span>
-            <span className="text-emerald-200">
-              <strong>{hygieneStats.validIdentifiedRows.toLocaleString()}</strong> Valid Orders
-            </span>
-            <span className="text-emerald-400">·</span>
-            <span className="text-emerald-200">
-              <strong>{customerListWithPersonas.length}</strong> Unique Customers
-            </span>
-            <span className="text-emerald-400">·</span>
-            <span className="text-amber-300 font-bold">
-              Revenue: {currencySymbol} {totalValidatedRevenue.toLocaleString()}
-            </span>
-            <span className="text-[10px] text-emerald-300/80 hidden xl:inline">
-              (Last synced: {lastSyncedAt})
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-            <span className="text-[11px] text-emerald-300 mr-1 hidden sm:inline">Quick Test Dataset:</span>
+        {/* Navigation: four plain-language steps; expert screens behind "Advanced" */}
+        <nav aria-label="Main" className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 pb-2">
+          {([
+            ['home', 'Home', Home],
+            ['cleaner', 'Clean data', Wand2],
+            [2, 'Customer groups', Box],
+            [4, 'Send messages', MessageSquareShare],
+          ] as const).map(([tab, label, Icon]) => (
             <button
-              onClick={handleLoadDarazSample}
-              disabled={isLoading}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
-                datasetName.includes('Daraz')
-                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-2xs'
-                  : 'bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border-emerald-700'
+              key={String(tab)}
+              onClick={() => setActiveTab(tab)}
+              aria-current={activeTab === tab ? 'page' : undefined}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold cursor-pointer transition-colors ${
+                activeTab === tab ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <Package className="w-3.5 h-3.5" />
-              <span>Daraz &amp; POS (1,049 Orders)</span>
+              <Icon className="w-4 h-4" /> {label}
             </button>
-            <button
-              onClick={handleLoadRichBDSample}
-              disabled={isLoading}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
-                datasetName.includes('180+') || datasetName.includes('160+') || datasetName.includes('200')
-                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-2xs'
-                  : 'bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border-emerald-700'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>BD Retail &amp; Boutique (200 Orders)</span>
-            </button>
-            <button
-              onClick={() => setIsUploadOpen(true)}
-              disabled={isLoading}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white text-emerald-950 hover:bg-emerald-50 transition-all cursor-pointer shadow-2xs"
-            >
-              <Upload className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Upload POS / CSV / Excel</span>
-            </button>
-          </div>
-        </div>
-        {/* Navigation Tabs Bar with Live Dynamic Badges */}
-        <div className="flex flex-wrap items-center justify-start gap-x-1 sm:gap-x-2 gap-y-1 border-b border-slate-200 text-xs font-semibold pb-px w-full">
-          {/* Dedicated Tab 0: Omni-Channel Retail, POS & Social Hub */}
+          ))}
+          <span className="flex-1" />
           <button
-            onClick={() => setActiveTab('whatsapp_shop')}
-            className={`py-2.5 px-2.5 sm:px-3 inline-flex items-center gap-1.5 border-b-2 transition-all cursor-pointer whitespace-nowrap group ${
-              activeTab === 'whatsapp_shop'
-                ? 'border-emerald-600 text-emerald-800 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
+            onClick={() => setShowAdvanced((v) => !v)}
+            aria-expanded={showAdvanced}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer"
           >
-            <ShoppingBag className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Retail, POS &amp; Shop Hub</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold transition-colors ${
-              activeTab === 'whatsapp_shop'
-                ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'bg-emerald-100/80 text-emerald-800'
-            }`}>
-              SMS · Email · WA · FB
-            </span>
+            <BrainCircuit className="w-4 h-4" /> {showAdvanced ? 'Hide advanced tools' : 'Advanced tools'}
           </button>
+          {showAdvanced && (
+            <div className="w-full flex flex-wrap gap-1.5 pt-1">
+              {([
+                [1, 'Store overview', LayoutDashboard],
+                [3, `Model check (k=${k} · ${healthMetrics.silhouetteScore.toFixed(2)})`, BrainCircuit],
+                [5, 'Customer lookup', Calculator],
+                ['whatsapp_shop', 'Shop ledger & WhatsApp', ShoppingBag],
+              ] as const).map(([tab, label, Icon]) => (
+                <button
+                  key={String(tab)}
+                  onClick={() => setActiveTab(tab)}
+                  aria-current={activeTab === tab ? 'page' : undefined}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border ${
+                    activeTab === tab ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" /> {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </nav>
 
-          {/* Tab 1: Store Overview */}
-          <button
-            onClick={() => setActiveTab(1)}
-            className={`py-2.5 px-2.5 sm:px-3 inline-flex items-center gap-1.5 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 1
-                ? 'border-emerald-700 text-emerald-800 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 shrink-0" />
-            <span>Store Overview</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-semibold ${
-              activeTab === 1
-                ? 'bg-emerald-100 text-emerald-800'
-                : 'bg-slate-100 text-slate-500'
-            }`}>
-              {hygieneStats.validIdentifiedRows.toLocaleString()}
-            </span>
-          </button>
-
-          {/* Tab 2: Customer Segments */}
-          <button
-            onClick={() => setActiveTab(2)}
-            className={`py-2.5 px-2.5 sm:px-3 inline-flex items-center gap-1.5 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 2
-                ? 'border-emerald-700 text-emerald-800 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
-          >
-            <Box className="w-4 h-4 shrink-0" />
-            <span>Customer Segments</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-semibold ${
-              activeTab === 2
-                ? 'bg-emerald-100 text-emerald-800'
-                : 'bg-slate-100 text-slate-500'
-            }`}>
-              {customerListWithPersonas.length} profiles
-            </span>
-          </button>
-
-          {/* Tab 3: ML Validation & Health */}
-          <button
-            onClick={() => setActiveTab(3)}
-            className={`py-2.5 px-2.5 sm:px-3 inline-flex items-center gap-1.5 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 3
-                ? 'border-emerald-700 text-emerald-800 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
-          >
-            <BrainCircuit className="w-4 h-4 shrink-0" />
-            <span>ML Validation &amp; Health</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-semibold ${
-              activeTab === 3
-                ? 'bg-emerald-100 text-emerald-800'
-                : 'bg-slate-100 text-slate-500'
-            }`}>
-              k={k} · {healthMetrics.silhouetteScore.toFixed(2)}
-            </span>
-          </button>
-
-          {/* Tab 4: Omni-Channel Campaigns with Forecaster Badge */}
-          <button
-            onClick={() => setActiveTab(4)}
-            className={`py-2.5 px-2.5 sm:px-3 inline-flex items-center gap-1.5 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 4
-                ? 'border-emerald-700 text-emerald-800 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
-          >
-            <MessageSquareShare className="w-4 h-4 shrink-0" />
-            <span>Omni-Channel Campaigns</span>
-            <span className="text-[10px] bg-emerald-100/90 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded-full font-bold shadow-2xs">
-              Forecaster
-            </span>
-          </button>
-
-          {/* Tab 5: Live POS Predictor */}
-          <button
-            onClick={() => setActiveTab(5)}
-            className={`py-2.5 px-2.5 sm:px-3 inline-flex items-center gap-1.5 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 5
-                ? 'border-emerald-700 text-emerald-800 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
-          >
-            <Calculator className="w-4 h-4 shrink-0" />
-            <span>Live POS Predictor</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-semibold ${
-              activeTab === 5
-                ? 'bg-emerald-100 text-emerald-800'
-                : 'bg-slate-100 text-slate-500'
-            }`}>
-              Live
-            </span>
-          </button>
-        </div>
+        {activeTab === 'home' && (
+          <HomeTab
+            customers={customerListWithPersonas}
+            datasetName={datasetName}
+            validOrders={hygieneStats.validIdentifiedRows}
+            revenue={totalValidatedRevenue}
+            currencySymbol={currencySymbol}
+            onUpload={() => setIsUploadOpen(true)}
+            onLoadSample={handleLoadRichBDSample}
+            onNavigate={setActiveTab}
+          />
+        )}
 
         {/* Dedicated Tab 0: WhatsApp Shop (BDT ৳ & Excel Hub) */}
         {activeTab === 'whatsapp_shop' && (
@@ -588,6 +479,14 @@ export default function App() {
             currencySymbol={currencySymbol}
             initialOrders={shopOrders}
             initialDatasetLabel={shopDatasetLabel}
+          />
+        )}
+
+        {activeTab === 'cleaner' && (
+          <DataCleanerTab
+            currentRows={rawRows}
+            currentName={datasetName}
+            onUseCleaned={(rows, label) => { handleSyncFromWhatsAppShop(rows, label); setActiveTab(2); }}
           />
         )}
 

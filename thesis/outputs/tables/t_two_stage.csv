@@ -1,0 +1,4 @@
+Model,Segments,Repurchase AUC,Spend Spearman,Adj. R2
+Single-stage K-Means (k=4),4,0.712,0.452,0.22
+Two-stage: one-time + 3 repeat clusters,4,0.708,0.434,0.22
+Two-stage: one-time + 4 repeat clusters,5,0.719,0.466,0.247

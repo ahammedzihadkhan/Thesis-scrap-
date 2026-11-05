@@ -1,0 +1,5 @@
+Segment,Customers,Recency,Frequency,Monetary,T,D
+Champions,6,5.2,42.0,75568.0,9.4,3.0
+Loyal,9,4.7,42.0,47317.3,9.4,3.0
+At-Risk,1,10.0,41.0,32039.0,9.4,3.0
+Hibernating,9,5.6,42.0,26112.0,9.4,3.0

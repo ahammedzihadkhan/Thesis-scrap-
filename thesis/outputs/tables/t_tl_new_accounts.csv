@@ -1,0 +1,6 @@
+Model (new accounts only),Silhouette,Bootstrap ARI,Repurchase AUC
+Early-stage K-Means k=2,0.2857,0.6871,0.51
+Early-stage K-Means k=3,0.2701,0.6004,0.501
+Early-stage K-Means k=4,0.2859,0.798,0.528
+Global k=4 label,,,0.513
+Supervised: history + profile,,,0.518

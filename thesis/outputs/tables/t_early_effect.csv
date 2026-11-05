@@ -1,0 +1,8 @@
+Method,Segments,Repurchase AUC,Spend Spearman,Adj. R2
+No segmentation,1,0.499,-0.031,0.0
+Single guest rule (F=1 vs F>1),2,0.569,0.121,0.027
+Classic quintile RFM score,4,0.594,0.188,0.047
+Global K-Means k=4 label,4,0.599,0.2,0.05
+Early-stage K-Means (k=3),3,0.585,0.166,0.038
+Early-stage K-Means (k=4),4,0.601,0.2,0.044
+Supervised reference (5 features),–,0.628,–,–

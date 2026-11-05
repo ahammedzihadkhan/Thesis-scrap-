@@ -1,0 +1,6 @@
+Dataset,Real data,Cutoff,Horizon (days),Customers,One-time (%),Early-stage (%),Silhouette k=4,Bootstrap ARI k=4,Valid k=4,Repurchase (%),AUC guest rule,AUC quintile RFM,AUC k=2,AUC k=4,AUC plain RFM k=4,AUC supervised,AUC k=4 early-stage,AUC k=4 established
+"UCI Online Retail (UK, 2010-11)",True,2011-09-01,99,3317,41.5,62.3,0.295,0.942,True,58.8,0.651,0.711,0.672,0.708,0.702,0.741,0.597,0.634
+"Online Retail II year 1 (UK, 2009-10)",True,2010-07-01,150,2973,42.9,65.5,0.297,0.94,True,67.0,0.669,0.713,0.682,0.719,0.695,0.747,0.628,0.625
+"CDNOW (US, 1997-98)",True,1997-10-01,180,23500,59.1,78.2,0.461,0.991,True,25.8,0.71,0.74,0.72,0.749,0.748,0.771,0.633,0.643
+"Olist (Brazil, 2016-18)",True,2018-03-01,180,55525,97.1,99.8,0.38,0.781,False,1.2,0.535,0.531,0.535,0.575,0.568,0.592,0.558,0.53
+"TheLook (synthetic, 2019-24)",False,2023-07-01,180,45303,75.0,94.3,0.356,0.989,True,13.8,0.524,0.561,0.523,0.578,0.573,0.613,0.577,0.5

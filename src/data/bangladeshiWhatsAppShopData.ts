@@ -5350,7 +5350,7 @@ export function buildFCommerceDispatchUrl(
     return {
       url: buildMessengerChatUrl(cleanHandle, templateType, params),
       channel: 'Facebook Messenger',
-      identifier: `m.me/${cleanHandle}`,
+      identifier: cleanHandle,
     };
   }
 

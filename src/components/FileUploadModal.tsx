@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
-import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
+import { parseSpreadsheetFile } from '../rfm/fileParser';
 import { RawTransaction } from '../rfm/types';
 import { Upload, X, FileSpreadsheet, CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -21,59 +20,16 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     setErrorMsg(null);
     setIsProcessing(true);
-
-    const fileName = file.name;
-    const extension = fileName.split('.').pop()?.toLowerCase();
-
-    if (extension === 'xlsx' || extension === 'xls') {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const buffer = e.target?.result;
-          const workbook = XLSX.read(buffer, { type: 'binary' });
-          const firstSheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[firstSheetName];
-          const jsonData = XLSX.utils.sheet_to_json<RawTransaction>(sheet, { defval: '' });
-
-          if (jsonData.length === 0) {
-            setErrorMsg('Excel sheet is empty or contains no records.');
-            setIsProcessing(false);
-            return;
-          }
-
-          onDataLoaded(jsonData, fileName);
-          setIsProcessing(false);
-          onClose();
-        } catch (err: any) {
-          setErrorMsg(`Failed to parse Excel file: ${err.message || 'Unknown error'}`);
-          setIsProcessing(false);
-        }
-      };
-      reader.readAsBinaryString(file);
-    } else {
-      // CSV or TSV
-      Papa.parse<RawTransaction>(file, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          if (results.data.length === 0) {
-            setErrorMsg('CSV/TSV file is empty or contains no rows.');
-            setIsProcessing(false);
-            return;
-          }
-          onDataLoaded(results.data, fileName);
-          setIsProcessing(false);
-          onClose();
-        },
-        error: (err) => {
-          setErrorMsg(`Error parsing CSV/TSV: ${err.message}`);
-          setIsProcessing(false);
-        },
-      });
+    try {
+      onDataLoaded(await parseSpreadsheetFile(file), file.name);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not read this file.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 

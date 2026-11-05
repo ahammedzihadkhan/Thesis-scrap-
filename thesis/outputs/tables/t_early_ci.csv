@@ -1,0 +1,4 @@
+Comparison,Mean,95% CI low,95% CI high
+Early K-Means k=3 minus global k=4 label,-0.015,-0.034,0.006
+Early K-Means k=3 minus guest rule,0.015,-0.003,0.033
+Early K-Means k=3 minus quintile RFM,-0.009,-0.026,0.009

@@ -1,0 +1,6 @@
+Group,Customers,Share (%),Revenue before cutoff (%),Bought again after cutoff (%)
+Early-stage,2065,62.3,20.9,45.6
+  new (first order <= 90 days),592,17.8,6.3,51.9
+  low history (<= 2 orders),2027,61.1,19.3,45.0
+Established,1252,37.7,79.1,80.7
+All,3317,100.0,100.0,58.8

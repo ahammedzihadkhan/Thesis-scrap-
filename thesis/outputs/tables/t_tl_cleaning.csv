@@ -1,0 +1,5 @@
+Step,Count
+Registered users,100000
+Order items (raw),181759
+Valid order items (not cancelled / returned),136437
+Users with a valid order,66254

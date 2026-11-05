@@ -1,0 +1,6 @@
+Feature,Raw skewness,After log1p,After scaling
+Recency,1.246,-0.379,-0.379
+Frequency,12.063,1.208,1.208
+Monetary,19.333,0.396,0.396
+InterPurchase_Time,1.993,-0.296,-0.296
+Basket_Depth,6.917,-0.243,-0.243

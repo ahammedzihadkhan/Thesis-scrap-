@@ -1,0 +1,9 @@
+Method,Repurchase AUC
+No segmentation,0.5
+Single guest rule (F=1 vs F>1),0.524
+Classic quintile RFM score,0.561
+KM Extended RFM (k=2),0.523
+KM Extended RFM (k=4),0.578
+KM plain RFM (k=4),0.573
+Supervised: purchase history only,0.613
+Supervised: history + account & profile parameters,0.667

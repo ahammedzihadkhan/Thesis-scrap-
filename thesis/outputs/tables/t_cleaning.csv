@@ -1,0 +1,6 @@
+Step,Rows removed,Rows remaining
+Raw data,0,541909
+Missing CustomerID,135080,406829
+Cancelled invoices,8905,397924
+Invalid quantity or price,40,397884
+Exact duplicates,5192,392692

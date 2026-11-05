@@ -11,3 +11,19 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
+# Large raw dataset (download script in thesis notebook)
+thesis/data/online_retail.csv
+thesis/paper/*.aux
+thesis/paper/*.log
+thesis/paper/*.toc
+thesis/paper/*.out
+thesis/paper/*.lof
+thesis/paper/*.lot
+thesis/data/olist/
+thesis/data/thelook/
+thesis/data/retail2/
+thesis/data/cdnow/
+
+# Jupyter autosave copies
+.ipynb_checkpoints/

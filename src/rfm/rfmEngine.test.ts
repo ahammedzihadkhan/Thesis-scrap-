@@ -19,6 +19,8 @@ import {
   rankClustersToPersonas,
   runAlgorithmBenchmark,
   runTemporalHoldoutCheck,
+  adjustedRandIndex,
+  bootstrapStabilityARI,
 } from './mlClustering';
 import {
   generateUCIOnlineRetailSample,
@@ -170,13 +172,33 @@ test('Temporal holdout predictive validation splits timeline and calculates repu
     centroids
   );
 
-  const customerMap = new Map(
-    customerListWithPersonas.map((c) => [c.customerKey, c.persona!])
-  );
+  assert.ok(customerListWithPersonas.length > 0);
 
-  const holdoutResult = runTemporalHoldoutCheck(cleanedRows, customerMap);
+  const holdoutResult = runTemporalHoldoutCheck(cleanedRows, 4);
   assert.ok(holdoutResult.trainCustomerCount > 0);
   assert.ok(holdoutResult.segments.length === 4);
+  // True out-of-sample: only customers seen before the split date are segmented.
+  const seenBeforeSplit = new Set(cleanedRows.filter((r) => r.dateStr < holdoutResult.splitDate).map((r) => r.unifiedKey));
+  assert.ok(holdoutResult.trainCustomerCount <= seenBeforeSplit.size);
+});
+
+test('Adjusted Rand Index and live bootstrap stability', () => {
+  assert.equal(adjustedRandIndex([0, 0, 1, 1], [1, 1, 0, 0]), 1, 'label permutation is a perfect match');
+  // Reference values from sklearn.metrics.adjusted_rand_score
+  assert.ok(Math.abs(adjustedRandIndex([0, 0, 0, 1, 1, 1], [0, 1, 2, 0, 1, 2]) - -0.363636) < 1e-5);
+  assert.ok(Math.abs(adjustedRandIndex([0, 0, 1, 1, 2, 2, 0, 1], [1, 1, 0, 0, 2, 0, 2, 1]) - 0.047619) < 1e-5);
+  const pts = [...Array(40)].map((_, i) => (i < 20 ? [(i % 5) * 0.01, 0] : [10 + (i % 5) * 0.01, 10]));
+  const { labels } = runKMeans(pts, 2, 3, 30);
+  assert.ok(bootstrapStabilityARI(pts, 2, labels, 5) > 0.95, 'two far-apart blobs are perfectly stable');
+});
+
+test('Early-stage flag: new or low-history customers', () => {
+  const uciData = generateUCIOnlineRetailSample();
+  const { cleanedRows } = stitchAndCleanData(uciData, autoDetectColumnMapping(Object.keys(uciData[0])));
+  const { customerRFMList } = calculate5DRFM(cleanedRows);
+  for (const c of customerRFMList) {
+    assert.equal(c.lifecycleStage === 'Early-Stage', c.tenureDays! <= 90 || c.frequency <= 2);
+  }
 });
 
 test('WhatsApp Bulk Tool Export formats E.164 phone numbers and generates WATI/AiSensy CSV', () => {
@@ -262,6 +284,14 @@ test('WhatsApp Bulk Tool Export formats E.164 phone numbers and generates WATI/A
   assert.ok(exportResult.csvContent.includes('8801711234567'));
   assert.ok(exportResult.csvContent.includes('8801819876543'));
   assert.ok(exportResult.csvContent.includes('CHAMPION20'));
+
+  // A customer name from an uploaded file must not become a live spreadsheet formula.
+  const evil = generateWhatsAppBulkExport([{ ...testCustomers[0], customerName: '=HYPERLINK("http://x")' }], {
+    toolFormat: 'clean_phone_list', segmentFilter: 'All', onlyValidPhones: true, shopName: 'S', currencySymbol: 'Tk ',
+    campaignConfigs: { 'Champions (VIP Loyalists)': { persona: 'Champions (VIP Loyalists)', discountCode: 'C', discountValue: 'x', headline: 'h', messageTemplate: 'Hi {name}' } } as any,
+  });
+  assert.ok(!evil.csvContent.includes('"=HYPERLINK'), 'formula is neutralised');
+  assert.ok(evil.csvContent.includes(`"'=HYPERLINK`), 'name is kept, as text');
 });
 
 test('Extended synthetic Bangladeshi retail demo generates 150+ realistic orders', () => {
@@ -520,6 +550,7 @@ test('F-Commerce Messenger fallback targets Facebook ID when WhatsApp phone is m
     ...orderWithoutPhone,
     whatsappPhone: '+8801711234567',
     orderChannel: 'WhatsApp' as const,
+    preferredChannel: 'whatsapp' as const,
   };
 
   const waDispatch = buildFCommerceDispatchUrl(orderWithPhone, 'order_confirm', {

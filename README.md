@@ -1,241 +1,86 @@
-# 🛍️ KroyPulse — Universal Retail & F-Commerce Customer Segmentation Web App
+# KroyPulse — E-Commerce Customer Segmentation via Extended RFM and Unsupervised Machine Learning
 
-[![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.35+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-4.x-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+Undergraduate thesis, Department of Computer Science & Engineering, City University, Bangladesh (Batch 62)
 
-> **Undergraduate Thesis Interactive System & Decision Support Platform**  
-> **Department of Computer Science & Engineering, City University, Bangladesh**  
-> **Supervisor:** Monoara Sultana Morzina, Lecturer, Department of CSE  
-> **Authors:**  
-> - **Ahammed Zihad Khan** (ID: 0272310005101036)  
-> - **Shaheda Akter** (ID: 0272310005101086)  
-> - **Aurnob Saha** (ID: 0272310005101095)  
-> - **Md. Nazmul Hasan** (ID: 0272310005101066)  
+**Authors:** Ahammed Zihad Khan (0272310005101036) · Shaheda Akter (0272310005101086) · Aurnob Saha (0272310005101095) · Md. Nazmul Hasan (0272310005101066)
+**Supervisor:** Monoara Sultana Morzina, Assistant Professor · **Co-Supervisor:** Mst. Shikha Moni, Lecturer
+
+This repository holds three things:
+
+| Folder | What it is |
+|---|---|
+| [`thesis/notebook/`](thesis/notebook/) | The Jupyter notebook that reproduces **every number, table and figure** in the thesis |
+| [`thesis/paper/`](thesis/paper/) | The thesis in LaTeX (`thesis.tex`) and the compiled PDF |
+| [`src/`](src/) | **KroyPulse**, the open-source web app that applies the method to any shop's order file — locally |
 
 ---
 
-## 📌 Overview
+## 1. Reproduce the thesis results
 
-**KroyPulse** is an interactive, enterprise-grade web application bringing our thesis methodology — **Extended 5D RFM Modeling ($R, F, M, T, D$) & Unsupervised Machine Learning** — into real-world operational retail, F-Commerce (Facebook Commerce), and WhatsApp commerce environments.
-
-While traditional segmentation systems require rigid customer accounts and only track Recency, Frequency, and Monetary value, **KroyPulse** addresses the real-world friction of social commerce:
-1. **Zero-Account Identity Stitching:** Heuristically links guest orders and social chats into unified customer profiles using normalized phone numbers and transaction graphs.
-2. **5D Extended RFM Metric Engine:** Ingests transaction data and computes $R$ (Recency), $F$ (Frequency), $M$ (Monetary), $T$ (Inter-Purchase Cadence), and $D$ (Basket Depth / Catalog Breadth).
-3. **Interactive 3D Cluster Visualizer:** Renders high-dimensional customer cohorts in real-time.
-4. **Multi-Channel Campaign Studio:** Generates click-to-chat WhatsApp direct links (`wa.me`), Messenger prompts, personalized discount codes, and CSV queue exports.
-5. **Live POS / Single-Customer Predictor:** Classifies any incoming buyer on-the-fly at the point of sale.
-
----
-
-## 📸 Application Screenshots
-
-<div align="center">
-  <h3>Tab 1: Store Overview & Guest Identity Resolution</h3>
-  <img src="screen-home.png" alt="KroyPulse Store Overview" width="950" />
-</div>
-
-<br />
-
-<div align="center">
-  <h3>Tab 4: WhatsApp & Social Multi-Channel Campaign Studio</h3>
-  <img src="screen-tab4-campaigns.png" alt="Campaign Studio" width="950" />
-</div>
-
-<br />
-
-<div align="center">
-  <h3>Tab 5: Live POS / Real-Time Single-Customer Predictor</h3>
-  <img src="screen-tab5-pos.png" alt="Live POS Predictor" width="950" />
-</div>
-
-<br />
-
-<div align="center">
-  <h3>Personalized Dynamic Customer Offer Modal</h3>
-  <img src="screen-offer-modal.png" alt="Offer Modal" width="750" />
-</div>
-
----
-
-## 🔬 Mathematical Framework: Extended 5D RFM
-
-For each unique customer $i \in \{1, 2, \dots, N\}$ evaluated at reference snapshot date $t_{\text{ref}} = \max(\text{OrderDate}) + 1\text{ day}$:
-
-$$\begin{aligned}
-R_i &= t_{\text{ref}} - \max(t_{i, j}) && \text{(Recency: Days since last completed purchase)} \\
-F_i &= |\{ \text{OrderID}_{i, j} \}| && \text{(Frequency: Total distinct order count)} \\
-M_i &= \sum_{j} (\text{Quantity}_{i, j} \times \text{UnitPrice}_{i, j}) && \text{(Monetary: Total cumulative spend)} \\
-T_i &= \frac{1}{F_i - 1} \sum_{k=1}^{F_i - 1} (\tau_{i, k+1} - \tau_{i, k}) && \text{(Inter-Purchase Time: Temporal interval between orders, } F_i \ge 2\text{)} \\
-D_i &= |\{ \text{ItemCode}_{i, j} \}| && \text{(Basket Depth: Distinct SKUs / catalog discovery)}
-\end{aligned}$$
-
-### Feature Preprocessing & Scaling
-- **$\log(1+x)$ Transformation:** Resolves extreme positive skewness in retail spend and order distributions.
-- **Z-Score Normalization:** Fits features onto standardized unit variance: $z = \frac{x - \mu}{\sigma}$.
-
----
-
-## 🎯 Discovered Behavioral Segments ($k=4$)
-
-| Cluster | Segment Persona | Strategic Description | Recommended Action |
-|:---:|:---|:---|:---|
-| **0** | 🌟 **Champions (VIP Loyalists)** | Highest spend, frequent orders, rapid reorder cadence, wide product exploration. | VIP concierge, exclusive early access, zero-friction perks. |
-| **1** | 🚀 **Loyal & Promising Regulars** | Steady recurring orders, reliable spend, high potential for lifetime value growth. | Cross-sell recommendations, bundle incentives, loyalty tier unlocks. |
-| **2** | ⚠️ **High-Potential / At-Risk Guests** | Substantial past spend whose purchase cadence is slipping; high churn vulnerability. | Automated win-back discounts, personalized re-engagement via WhatsApp. |
-| **3** | 💤 **Hibernating / Lost Guests** | One-off buyers or long-inactive accounts with low basket diversity. | Clearance promotions, low-cost reactivation blasts, churn win-back. |
-
----
-
-## ⚡ Core Web Application Modules
-
-### 📊 Tab 1: Store Overview & Data Hygiene
-- Real-time guest order resolution and duplicate removal.
-- Metrics for total revenue, average order value (AOV), guest checkout share, and recovered repeat buyer count.
-- Smart Column Mapper supporting custom CSV and Excel schemas with fuzzy column header matching.
-
-### 🎯 Tab 2: Extended RFM Segments & 3D Explorer
-- Interactive 3D Scatter Plot built with Three.js / Plotly for multi-dimensional cluster exploration.
-- Cohort breakdown by population share, monetary contribution, and average inter-purchase days.
-
-### 🔬 Tab 3: Machine Learning Validation & Benchmark
-- Algorithmic evaluation across **K-Means++**, **Ward Hierarchical Clustering**, and **DBSCAN**.
-- Silhouette Score, Davies-Bouldin Index, and cluster size distribution validity checks ($2\% - 80\%$).
-
-### 💬 Tab 4: Multi-Channel Campaign Studio & Dispatch
-- Click-to-chat WhatsApp direct engine (`https://wa.me/{phone}?text={custom_message}`).
-- Facebook Messenger & Email campaign triggers.
-- Campaign ROI Forecaster with conversion probability, expected revenue, and profit simulations.
-- Bulk export ready for WhatsApp Business API and CRM systems.
-
-### ⚡ Tab 5: Live POS / Single-Customer Segment Predictor
-- Instant classification for store cashiers, live-chat agents, and phone operators.
-- Computes nearest centroid distance and suggests targeted up-sell / retention tactics during live checkout.
-
----
-
-## 🚀 Getting Started
-
-KroyPulse provides **two complementary interfaces**:
-1. **Modern React Web App** (Full-featured production UI with Tailwind CSS & animations).
-2. **Streamlit App** (Rapid Python interactive environment for defense presentations).
-
----
-
-### Option A: Modern React Web Application (Recommended)
-
-#### 1. Prerequisites
-- **Node.js** (v18.0.0 or higher)
-- **npm** or **bun**
-
-#### 2. Installation
 ```bash
-# Clone the repository
-git clone https://github.com/ahammedzihadkhan/Thesis-scrap-.git
-cd Thesis-scrap-
+pip install -r thesis/requirements.txt   # numpy, pandas, scikit-learn, scipy, matplotlib, nbclient
+cd thesis/notebook
+python build_notebook.py                 # builds and runs Extended_RFM_Thesis.ipynb (~5 min)
+```
 
-# Switch to the web-app branch
-git checkout web-app
+The UCI Online Retail file is downloaded automatically the first time (or place `online_retail.csv` in `thesis/data/`).
+Outputs go to `thesis/outputs/figures`, `thesis/outputs/tables` (CSV + LaTeX) and `thesis/outputs/results.json`.
 
-# Install dependencies
+Headline results (UCI Online Retail, 4,338 customers, K-Means k = 4 on five log-scaled features):
+
+| Result | Value |
+|---|---|
+| Silhouette / Davies–Bouldin | 0.311 / 1.244 |
+| Bootstrap stability (mean ARI, 30 resamples) | 0.952 |
+| Out-of-sample repurchase AUC (segments built before 1 Sep 2011) | 0.712 (k = 2: 0.679; single guest rule: 0.657) |
+| Robustness: k = 4 beats k = 2 and the guest rule at every one of 5 cutoffs | 5 / 5 |
+| Early-stage customers (new or ≤ 2 orders) | 62 % of customers, 21 % of revenue; within-group AUC ≈ 0.60 |
+| Repurchase AUC with 30 / 60 / 90 / 180 days of history | 0.64 / 0.69 / 0.72 / 0.77 |
+| External validation: Olist (Brazil, 2016–18, 93,358 customers, 97 % one-time) | K-Means the only valid one of 8 algorithms; AUC k=4 0.575 vs guest rule 0.535 |
+| Account-age study: TheLook (synthetic, 100k users with account-creation time) | Segments ≈ chance for accounts < 90 days, rising with account age; profile parameters raise AUC 0.613 → 0.667; never-bought users: profile predicts first purchase, AUC 0.688 |
+
+## 2. Run KroyPulse on your own computer
+
+KroyPulse runs **only on your machine**. There is no server and no upload; files you open stay in the browser's memory.
+
+**Windows:** install [Node.js 20+](https://nodejs.org), then double-click `start-kroypulse.bat`.
+**macOS / Linux:** `./start-kroypulse.sh`
+
+Or by hand:
+
+```bash
 npm install
+npm start          # builds and opens http://127.0.0.1:4173
+npm test           # 27 unit tests (engine, data cleaner, local login, WhatsApp API)
 ```
 
-#### 3. Environment Setup (Optional)
-If you wish to enable server-side Gemini AI features:
-```bash
-cp .env.example .env.local
-# Add your GEMINI_API_KEY in .env.local
-```
+On first start you create the **owner account** (stored only on that computer). Staff accounts can be added from the bar at the top.
 
-#### 4. Launch Development Server
-```bash
-npm run dev
-```
-Open your browser at `http://localhost:3000` to interact with the full application.
+### Features
 
----
+- **Automatic Data Cleaner** — open any CSV / Excel export; dates (including Excel serial dates and day/month detection), prices (৳, Tk, commas), Bangla digits, phone numbers (+880 / missing leading 0), e-mails, IDs, blank markers, empty rows/columns and duplicates are fixed, with a log of every rule. Export as CSV or Excel. Every upload is cleaned automatically.
+- **Guest identity stitching** — repeat buyers without an account are linked by phone number.
+- **Extended RFM segmentation** — R, F, M, inter-purchase time and basket depth; K-Means with k-means++; Champions / Loyal / At-Risk / Hibernating; **Early-Stage** flag for new or low-history customers.
+- **Validation computed live** — silhouette, Davies–Bouldin, Calinski–Harabasz, Hopkins, bootstrap stability, and a true temporal holdout. The five non-K-Means benchmark rows are labelled as thesis reference values.
+- **Send to everyone** — one offer per group in English or Bangla. Free one-by-one mode opens WhatsApp or Messenger with each message ready; optional automatic mode sends Meta-approved templates to opted-in customers through the official WhatsApp Business Cloud API (no unofficial WhatsApp automation, which gets numbers banned).
 
-### Option B: Streamlit Python Web Application
+### Security and privacy
 
-#### 1. Prerequisites
-- **Python 3.9+**
+| Measure | Where |
+|---|---|
+| All computation in the browser; no backend, no analytics, no external fonts | whole app |
+| Content-Security-Policy: connections only to the app itself and Meta's official WhatsApp API (used only for automatic sending, after you press Send) | [vite.config.ts](vite.config.ts) |
+| Server binds to `127.0.0.1` only (not reachable from the local network) | [vite.config.ts](vite.config.ts) |
+| `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, restrictive Permissions-Policy | [vite.config.ts](vite.config.ts) |
+| Local accounts: PBKDF2-SHA-256 (600,000 iterations, 16-byte salt), constant-time compare, lockout after 5 failures, 8-hour session, auto-lock after 30 min idle | [src/auth/localAuth.ts](src/auth/localAuth.ts) |
+| Upload limits (50 MB, 600k rows, CSV/TSV/XLSX only); cells read as text | [src/rfm/fileParser.ts](src/rfm/fileParser.ts) |
+| Spreadsheet formula-injection protection on CSV export | [src/rfm/dataCleaner.ts](src/rfm/dataCleaner.ts) |
+| Patched SheetJS 0.20.3 (fixes CVE-2023-30533, CVE-2024-22363); unused server/AI packages removed; `npm audit`: 0 vulnerabilities | [package.json](package.json) |
 
-#### 2. Installation
-```bash
-pip install -r requirements.txt
-```
+The login protects the app from other people using the same computer. It cannot protect against someone who fully controls the device, and there is no password reset (clear the site data to start again; no customer data is stored, so nothing is lost).
 
-#### 3. Launch Streamlit
-```bash
-streamlit run app.py
-```
-Open your browser at `http://localhost:8501`.
+Before messaging customers, get their consent and follow WhatsApp / Facebook rules.
 
----
+## License
 
-## 📁 Repository Structure (`web-app` branch)
-
-```
-kroypulse/
-├── public/                       # Static web assets & icons
-├── src/
-│   ├── components/               # React UI components
-│   │   ├── Tab1StoreOverview.tsx # Store analytics & data hygiene
-│   │   ├── Tab2SegmentsExplorer.tsx # 5D RFM personas & metrics
-│   │   ├── Tab3MLValidation.tsx  # Algorithm benchmark & cluster health
-│   │   ├── Tab4CampaignStudio.tsx# WhatsApp & Messenger campaign dispatcher
-│   │   ├── Tab5POSPredictor.tsx  # Live POS / real-time predictor
-│   │   ├── ScatterPlot3D.tsx     # Interactive 3D cluster plot
-│   │   ├── WhatsAppShopSection.tsx# F-Commerce order & catalog workflow
-│   │   └── WhatsAppBulkExportModal.tsx # WhatsApp queue exporter
-│   ├── data/                     # Preset data fixtures
-│   │   ├── bangladeshiWhatsAppShopData.ts # F-Commerce order sample
-│   │   └── darazSampleData.ts    # South Asian e-commerce sample
-│   ├── rfm/                      # Core analytics & ML engine
-│   │   ├── rfmCalculator.ts      # 5D RFM feature engineering
-│   │   ├── identityStitcher.ts   # Guest order resolution & phone graph
-│   │   ├── mlClustering.ts       # K-Means, Z-score scaling, Silhouette
-│   │   ├── recommendationEngine.ts # Dynamic personalized offers
-│   │   └── campaignForecaster.ts # ROI & conversion simulations
-│   ├── App.tsx                   # Main application layout & state
-│   ├── index.css                 # Global styling
-│   └── main.tsx                  # React entry point
-├── app.py                        # Python Streamlit alternative UI
-├── requirements.txt              # Python dependencies
-├── package.json                  # Node.js dependencies & scripts
-├── vite.config.ts                # Vite configuration
-├── tsconfig.json                 # TypeScript configuration
-├── metadata.json                 # Application metadata
-├── screen-home.png               # Application screenshot (Home)
-├── screen-tab4-campaigns.png     # Application screenshot (Campaign Studio)
-├── screen-tab5-pos.png           # Application screenshot (POS Predictor)
-├── screen-offer-modal.png        # Application screenshot (Offer Modal)
-├── screen-personalized-offers.png# Application screenshot (Personalized Offers)
-└── README.md                     # Documentation
-```
-
----
-
-## 📜 Citation & Academic Attribution
-
-If you use this web application, extended RFM algorithms, or benchmark datasets in your research, please cite:
-
-```bibtex
-@thesis{khan2026kroypulse,
-  author       = {Ahammed Zihad Khan and Shaheda Akter and Aurnob Saha and Md. Nazmul Hasan},
-  title        = {E-Commerce Customer Segmentation via Extended RFM Modeling and Unsupervised Machine Learning},
-  school       = {City University, Bangladesh},
-  department   = {Department of Computer Science & Engineering},
-  year         = {2026},
-  note         = {Supervised by Monoara Sultana Morzina}
-}
-```
-
----
-
-## 📄 License
-This project is open-sourced under the [MIT License](LICENSE).
+MIT — free to use, study and improve. Contributions are welcome.

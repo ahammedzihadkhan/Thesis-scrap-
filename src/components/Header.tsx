@@ -66,11 +66,11 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="text-emerald-700">KroyPulse</span>
                 </h1>
                 <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-md">
-                  Omni-Channel Retail, POS &amp; Social Intelligence
+                  Runs only on this computer
                 </span>
               </div>
               <p className="text-[11px] text-slate-500">
-                5D RFM Engine · Reach Anyhow (POS Phone SMS · Email · WhatsApp · Messenger) · Identity Stitching
+                Know your customers, send the right message
               </p>
             </div>
           </div>

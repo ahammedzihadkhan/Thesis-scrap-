@@ -1,0 +1,6 @@
+Feature,Mean,Std,Min,Median,Max,Skewness
+Recency,92.54,100.01,1.0,51.0,374.0,1.25
+Frequency,4.27,7.7,1.0,2.0,209.0,12.06
+Monetary,2048.69,8985.23,3.75,668.57,280206.02,19.33
+InterPurchase_Time,50.44,65.24,0.0,31.0,366.0,1.99
+Basket_Depth,61.5,85.37,1.0,35.0,1787.0,6.92

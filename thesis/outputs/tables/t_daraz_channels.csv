@@ -1,0 +1,7 @@
+Channel,Status,Orders,Value (Tk)
+Daraz BD,Delivered,756,914895.0
+Daraz BD,In Transit,47,60294.0
+Daraz BD,RTO / Returned,36,43122.0
+Pickaboo,Delivered,188,114460.0
+Pickaboo,In Transit,12,7320.0
+Pickaboo,RTO / Returned,10,6220.0

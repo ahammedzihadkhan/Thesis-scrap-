@@ -156,12 +156,12 @@ export const Tab3MLValidation: React.FC<Tab3MLValidationProps> = ({
             <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
           </div>
           <div className="text-2xl font-black text-slate-900">
-            {healthMetrics.bootstrapStabilityARI.toFixed(2)} ARI
+            {Number.isFinite(healthMetrics.bootstrapStabilityARI) ? healthMetrics.bootstrapStabilityARI.toFixed(2) : '–'} ARI
           </div>
           <span className="text-[10px] text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 font-semibold inline-block mt-1">
-            Highly Stable
+            {healthMetrics.bootstrapStabilityARI >= 0.8 ? 'Stable' : healthMetrics.bootstrapStabilityARI >= 0.6 ? 'Moderately stable' : 'Unstable'}
           </span>
-          <span className="text-[10px] text-slate-400 block mt-1">Mean Adjusted Rand Index (5 seeds).</span>
+          <span className="text-[10px] text-slate-400 block mt-1">Computed live: mean ARI over 10 bootstrap resamples.</span>
         </div>
       </div>
 
@@ -381,20 +381,25 @@ export const Tab3MLValidation: React.FC<Tab3MLValidationProps> = ({
                       <span>{b.algorithm}</span>
                       {b.highlightKMeansWin && (
                         <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.2 rounded font-black uppercase">
-                          Winner
+                          Live
+                        </span>
+                      )}
+                      {b.source === 'reference' && (
+                        <span className="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-black uppercase" title="Thesis Python result on UCI Online Retail, not computed on this dataset">
+                          Thesis reference
                         </span>
                       )}
                     </div>
                     <span className="text-[10px] text-slate-500 font-normal block">{b.fullName}</span>
                   </td>
                   <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">
-                    {b.silhouette.toFixed(2)}
+                    {Number.isFinite(b.silhouette) ? b.silhouette.toFixed(2) : '–'}
                   </td>
                   <td className="py-3 px-3 text-right font-mono text-slate-700">
-                    {b.daviesBouldin.toFixed(2)}
+                    {Number.isFinite(b.daviesBouldin) ? b.daviesBouldin.toFixed(2) : '–'}
                   </td>
                   <td className="py-3 px-3 text-right font-mono text-slate-700">
-                    {b.calinskiHarabasz.toLocaleString()}
+                    {Number.isFinite(b.calinskiHarabasz) ? b.calinskiHarabasz.toLocaleString() : '–'}
                   </td>
                   <td className="py-3 px-3 text-right font-mono">
                     <span className={b.minClusterSizePct < 2 ? 'text-rose-600 font-bold' : 'text-slate-700'}>
@@ -438,7 +443,7 @@ export const Tab3MLValidation: React.FC<Tab3MLValidationProps> = ({
               Temporal Holdout Predictive Check (Future Repurchase Test)
             </h3>
             <p className="text-xs text-slate-500">
-              Transactions split at 75th percentile date ({holdoutResult.splitDate}): First 75% in-sample vs last 25% future holdout
+              True out-of-sample test: segments are built only from orders before {holdoutResult.splitDate} (75th percentile date) and judged on who bought again afterwards.
             </p>
           </div>
           <span className="text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg">

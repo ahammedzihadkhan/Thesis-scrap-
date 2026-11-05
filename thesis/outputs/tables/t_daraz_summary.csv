@@ -1,0 +1,9 @@
+Item,Value
+Order lines,1049.0
+Valid order lines,1049.0
+Unique customers (phone key),25.0
+Rows with a customer ID,545.0
+Total order value (Tk),1146311.0
+Silhouette (k=4),0.317
+Davies-Bouldin (k=4),0.812
+Hopkins,0.736

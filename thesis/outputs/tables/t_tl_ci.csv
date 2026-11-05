@@ -1,0 +1,4 @@
+Comparison,Mean,95% CI low,95% CI high
+k=4 minus guest rule,0.054,0.046,0.061
+k=4 minus k=2,0.054,0.046,0.062
+History + profile minus history only,0.053,0.048,0.059

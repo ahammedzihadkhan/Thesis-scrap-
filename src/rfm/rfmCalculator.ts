@@ -23,7 +23,8 @@ export function calculateSkewness(values: number[]): { mean: number; std: number
 
   const variance = m2 / n;
   const std = Math.sqrt(variance) || 1e-9;
-  const skewness = (m3 / n) / Math.pow(variance, 1.5);
+  // A constant column (e.g. every customer bought the same products) has no skew, not 0/0 = NaN.
+  const skewness = variance < 1e-12 ? 0 : (m3 / n) / Math.pow(variance, 1.5);
 
   return { mean, std, skewness };
 }
@@ -115,6 +116,7 @@ export function calculate5DRFM(
     // Recency: Days between last purchase and reference date
     const diffMs = referenceDate.getTime() - g.lastDate.getTime();
     const recency = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    const tenureDays = Math.floor((referenceDate.getTime() - g.firstDate.getTime()) / (1000 * 60 * 60 * 24));
 
     // Frequency: Count of distinct orders
     const frequency = g.orders.size;
@@ -178,6 +180,8 @@ export function calculate5DRFM(
       interPurchaseTime,
       basketDepth,
       isSinglePurchase: frequency === 1,
+      tenureDays,
+      lifecycleStage: tenureDays <= 90 || frequency <= 2 ? 'Early-Stage' : 'Established',
     });
   }
 

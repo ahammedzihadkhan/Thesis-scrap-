@@ -8,6 +8,7 @@ import {
   TemporalHoldoutResult,
   CleanedTransaction,
 } from './types';
+import { calculate5DRFM, preprocessRFM } from './rfmCalculator';
 
 export const PERSONA_METAS: Record<PersonaType, PersonaMeta> = {
   'Champions (VIP Loyalists)': {
@@ -536,6 +537,12 @@ export function rankClustersToPersonas(
 /**
  * 6-Algorithm Benchmark with the 2%–80% Cluster Size Validity Check
  */
+/**
+ * Six-algorithm benchmark. The K-Means row is computed live on the loaded data.
+ * The other five rows are the thesis Python results on UCI Online Retail (4,338 customers,
+ * thesis/outputs/tables/t_benchmark.csv) and are labelled `source: 'reference'` in the UI.
+ * shortcut: hierarchical/GMM/DBSCAN are not run in the browser (O(n^2) memory); port them if live numbers are needed.
+ */
 export function runAlgorithmBenchmark(
   kMeansSilhouette: number,
   kMeansDB: number,
@@ -544,120 +551,62 @@ export function runAlgorithmBenchmark(
 ): BenchmarkAlgorithmResult[] {
   const minKMShare = Math.min(...centroids.map((c) => c.customerSharePct));
   const maxKMShare = Math.max(...centroids.map((c) => c.customerSharePct));
+  const ref = (algorithm: string, fullName: string, silhouette: number, daviesBouldin: number, calinskiHarabasz: number,
+    minClusterSizePct: number, maxClusterSizePct: number, isValid: boolean, note: string): BenchmarkAlgorithmResult => ({
+    algorithm, fullName, silhouette, daviesBouldin, calinskiHarabasz, minClusterSizePct, maxClusterSizePct, isValid,
+    statusNote: `Thesis reference (UCI, Python). ${note}`, source: 'reference',
+  });
 
   return [
     {
       algorithm: 'K-Means (Extended RFM)',
-      fullName: 'K-Means++ with 5D Extended RFM (k=4)',
+      fullName: `K-Means++ with 5D Extended RFM (k=${centroids.length})`,
       silhouette: kMeansSilhouette,
       daviesBouldin: kMeansDB,
       calinskiHarabasz: kMeansCH,
       minClusterSizePct: minKMShare,
       maxClusterSizePct: maxKMShare,
       isValid: minKMShare >= 2 && maxKMShare <= 80,
-      statusNote: 'Optimal balance across all 5 dimensions. Chosen for production.',
+      statusNote: 'Computed live on the loaded data.',
       highlightKMeansWin: true,
+      source: 'live',
     },
-    {
-      algorithm: 'Ward Hierarchical',
-      fullName: 'Agglomerative Hierarchical (Ward Linkage, Variance Minimization)',
-      silhouette: Math.round((kMeansSilhouette - 0.03) * 100) / 100,
-      daviesBouldin: Math.round((kMeansDB + 0.08) * 100) / 100,
-      calinskiHarabasz: Math.round(kMeansCH * 0.91),
-      minClusterSizePct: 11.2,
-      maxClusterSizePct: 44.8,
-      isValid: true,
-      statusNote: 'Valid cluster sizes, but quadratic O(N²) time complexity limits live POS ingestion.',
-    },
-    {
-      algorithm: 'Average Linkage',
-      fullName: 'Agglomerative Hierarchical (Average Distance Linkage)',
-      silhouette: 0.38,
-      daviesBouldin: 1.45,
-      calinskiHarabasz: 940,
-      minClusterSizePct: 0.8,
-      maxClusterSizePct: 88.4,
-      isValid: false,
-      statusNote: 'Violates 2%–80% rule: severe chaining leaves 88.4% in one giant cluster and 0.8% in tiny fragment.',
-    },
-    {
-      algorithm: 'Complete Linkage',
-      fullName: 'Agglomerative Hierarchical (Maximum Distance Linkage)',
-      silhouette: 0.36,
-      daviesBouldin: 1.58,
-      calinskiHarabasz: 870,
-      minClusterSizePct: 1.4,
-      maxClusterSizePct: 83.1,
-      isValid: false,
-      statusNote: 'Violates 2%–80% rule: lopsided cluster distribution with 83.1% in dominant cluster.',
-    },
-    {
-      algorithm: 'GMM (Gaussian Mixture)',
-      fullName: 'Expectation-Maximization Gaussian Mixture Model (Spherical/Full Covariance)',
-      silhouette: Math.round((kMeansSilhouette - 0.04) * 100) / 100,
-      daviesBouldin: Math.round((kMeansDB + 0.12) * 100) / 100,
-      calinskiHarabasz: Math.round(kMeansCH * 0.84),
-      minClusterSizePct: 7.3,
-      maxClusterSizePct: 56.4,
-      isValid: true,
-      statusNote: 'Valid distribution, but computationally intensive and sensitive to initial covariance.',
-    },
-    {
-      algorithm: 'DBSCAN (Density-Based)',
-      fullName: 'Density-Based Spatial Clustering of Applications with Noise',
-      silhouette: 0.21,
-      daviesBouldin: 2.14,
-      calinskiHarabasz: 420,
-      minClusterSizePct: 0.4,
-      maxClusterSizePct: 93.6,
-      isValid: false,
-      statusNote: 'Violates 2%–80% rule: 93.6% lumped into single mass, treating retail variance as noise.',
-    },
+    ref('Ward Hierarchical', 'Agglomerative, Ward linkage (k=4)', 0.2949, 1.3103, 2708.7, 11.96, 36.01, true, 'Similar partition to K-Means (ARI 0.81), 35x slower.'),
+    ref('Average Linkage', 'Agglomerative, average linkage (k=4)', 0.3411, 0.8442, 52.0, 0.02, 99.45, false, 'Highest silhouette but 99.45% in one cluster: fails the 2%-80% rule.'),
+    ref('Complete Linkage', 'Agglomerative, complete linkage (k=4)', 0.1002, 0.9935, 533.7, 0.14, 88.68, false, '88.68% in one cluster: fails the 2%-80% rule.'),
+    ref('GMM (Gaussian Mixture)', 'Gaussian mixture, full covariance (k=4)', 0.1944, 2.0743, 1870.1, 19.13, 34.42, true, 'Valid sizes but weaker on every index.'),
+    ref('DBSCAN (Density-Based)', 'DBSCAN (eps=0.8, minPts=10)', NaN, NaN, NaN, 100, 100, false, 'One cluster plus 3.07% noise; no grid setting gave 4 balanced clusters.'),
   ];
 }
 
 /**
- * Temporal Holdout Predictive Validation Engine
- * Splits timeline at 75th percentile date and validates future repurchase rate and future revenue share
+ * True temporal holdout: segments are built ONLY from orders before the split date
+ * (75th percentile of order time), then judged on who bought again afterwards.
  */
 export function runTemporalHoldoutCheck(
   cleanedRows: CleanedTransaction[],
-  customerMap: Map<string, PersonaType>
+  k = 4
 ): TemporalHoldoutResult {
-  if (cleanedRows.length === 0) {
-    return {
-      splitDate: 'N/A',
-      trainCustomerCount: 0,
-      holdoutCustomerCount: 0,
-      totalHoldoutRevenue: 0,
-      segments: [],
-    };
-  }
+  const empty: TemporalHoldoutResult = { splitDate: 'N/A', trainCustomerCount: 0, holdoutCustomerCount: 0, totalHoldoutRevenue: 0, segments: [] };
+  if (cleanedRows.length < 8) return empty;
 
-  // Sort rows chronologically
   const sorted = [...cleanedRows].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-  const splitIdx = Math.floor(sorted.length * 0.75);
-  const splitTimestamp = sorted[splitIdx].timestamp;
-  const splitDateStr = splitTimestamp.toISOString().slice(0, 10);
+  const splitTimestamp = sorted[Math.floor(sorted.length * 0.75)].timestamp;
+  const train = sorted.filter((r) => r.timestamp < splitTimestamp);
+  const future = sorted.filter((r) => r.timestamp >= splitTimestamp);
+  const { customerRFMList } = calculate5DRFM(train);
+  if (customerRFMList.length <= k) return empty;
 
-  // Group holdout transactions by customer
+  const { featuresStandardized } = preprocessRFM(customerRFMList);
+  const km = runKMeans(featuresStandardized, k, 5, 60);
+  const { customerListWithPersonas } = rankClustersToPersonas(customerRFMList, km.labels, k, km.centroids);
+
   const holdoutSpendByCustomer = new Map<string, number>();
   let totalHoldoutRevenue = 0;
-
-  for (let i = splitIdx; i < sorted.length; i++) {
-    const row = sorted[i];
+  for (const row of future) {
     totalHoldoutRevenue += row.totalAmount;
-    holdoutSpendByCustomer.set(
-      row.unifiedKey,
-      (holdoutSpendByCustomer.get(row.unifiedKey) || 0) + row.totalAmount
-    );
+    holdoutSpendByCustomer.set(row.unifiedKey, (holdoutSpendByCustomer.get(row.unifiedKey) || 0) + row.totalAmount);
   }
-
-  // Count train customers per persona and their future holdout repurchase
-  const personaStats = new Map<
-    PersonaType,
-    { trainCount: number; repurchasedCount: number; futureRevenue: number }
-  >();
 
   const personaOrder: PersonaType[] = [
     'Champions (VIP Loyalists)',
@@ -665,46 +614,88 @@ export function runTemporalHoldoutCheck(
     'High-Potential / At-Risk Guests',
     'Hibernating / Lost Guests',
   ];
-
-  for (const p of personaOrder) {
-    personaStats.set(p, { trainCount: 0, repurchasedCount: 0, futureRevenue: 0 });
-  }
-
-  for (const [custKey, persona] of customerMap.entries()) {
-    const stats = personaStats.get(persona);
-    if (!stats) continue;
-    stats.trainCount++;
-
-    if (holdoutSpendByCustomer.has(custKey)) {
-      stats.repurchasedCount++;
-      stats.futureRevenue += holdoutSpendByCustomer.get(custKey)!;
+  const personaStats = new Map(personaOrder.map((p) => [p, { trainCount: 0, repurchasedCount: 0, futureRevenue: 0 }]));
+  let trainFutureRevenue = 0;
+  for (const c of customerListWithPersonas) {
+    const st = personaStats.get(c.persona!);
+    if (!st) continue;
+    st.trainCount++;
+    const spend = holdoutSpendByCustomer.get(c.customerKey);
+    if (spend !== undefined) {
+      st.repurchasedCount++;
+      st.futureRevenue += spend;
+      trainFutureRevenue += spend;
     }
   }
 
-  const segments = personaOrder.map((persona) => {
-    const st = personaStats.get(persona)!;
-    const repurchaseRatePct =
-      st.trainCount > 0 ? Math.round((st.repurchasedCount / st.trainCount) * 1000) / 10 : 0;
-    const futureRevenueSharePct =
-      totalHoldoutRevenue > 0
-        ? Math.round((st.futureRevenue / totalHoldoutRevenue) * 1000) / 10
-        : 0;
-
-    return {
-      persona,
-      trainCustomerCount: st.trainCount,
-      repurchasedCount: st.repurchasedCount,
-      repurchaseRatePct,
-      futureRevenue: Math.round(st.futureRevenue * 100) / 100,
-      futureRevenueSharePct,
-    };
-  });
-
   return {
-    splitDate: splitDateStr,
-    trainCustomerCount: customerMap.size,
+    splitDate: splitTimestamp.toISOString().slice(0, 10),
+    trainCustomerCount: customerListWithPersonas.length,
     holdoutCustomerCount: holdoutSpendByCustomer.size,
     totalHoldoutRevenue: Math.round(totalHoldoutRevenue * 100) / 100,
-    segments,
+    segments: personaOrder.map((persona) => {
+      const st = personaStats.get(persona)!;
+      return {
+        persona,
+        trainCustomerCount: st.trainCount,
+        repurchasedCount: st.repurchasedCount,
+        repurchaseRatePct: st.trainCount > 0 ? Math.round((st.repurchasedCount / st.trainCount) * 1000) / 10 : 0,
+        futureRevenue: Math.round(st.futureRevenue * 100) / 100,
+        futureRevenueSharePct: trainFutureRevenue > 0 ? Math.round((st.futureRevenue / trainFutureRevenue) * 1000) / 10 : 0,
+      };
+    }),
   };
+}
+
+/** Adjusted Rand Index between two labelings (Hubert & Arabie, 1985). */
+export function adjustedRandIndex(a: number[], b: number[]): number {
+  const n = a.length;
+  if (n < 2) return 1;
+  const table = new Map<string, number>();
+  const rowSum = new Map<number, number>();
+  const colSum = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const key = `${a[i]}|${b[i]}`;
+    table.set(key, (table.get(key) || 0) + 1);
+    rowSum.set(a[i], (rowSum.get(a[i]) || 0) + 1);
+    colSum.set(b[i], (colSum.get(b[i]) || 0) + 1);
+  }
+  const c2 = (x: number) => (x * (x - 1)) / 2;
+  let index = 0, sumA = 0, sumB = 0;
+  table.forEach((v) => (index += c2(v)));
+  rowSum.forEach((v) => (sumA += c2(v)));
+  colSum.forEach((v) => (sumB += c2(v)));
+  const expected = (sumA * sumB) / c2(n);
+  const max = (sumA + sumB) / 2;
+  return max === expected ? 1 : (index - expected) / (max - expected);
+}
+
+/** Label each row with its nearest centroid. */
+export function assignToCentroids(data: number[][], centroids: number[][]): number[] {
+  return data.map((row) => {
+    let best = 0, bestD = Infinity;
+    centroids.forEach((c, j) => {
+      const d = euclideanDistance(row, c);
+      if (d < bestD) { bestD = d; best = j; }
+    });
+    return best;
+  });
+}
+
+/**
+ * Bootstrap stability, as in the thesis: fit K-Means on B resamples (with replacement),
+ * label every customer, and average the ARI against the full-data fit.
+ */
+export function bootstrapStabilityARI(data: number[][], k: number, referenceLabels: number[], B = 10, seed = 42): number {
+  const n = data.length;
+  if (n <= k * 2) return NaN;
+  let s = seed >>> 0;
+  const rand = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  let total = 0;
+  for (let b = 0; b < B; b++) {
+    const sample = Array.from({ length: n }, () => data[Math.floor(rand() * n)]);
+    const fit = runKMeans(sample, k, 3, 40);
+    total += adjustedRandIndex(referenceLabels, assignToCentroids(data, fit.centroids));
+  }
+  return total / B;
 }

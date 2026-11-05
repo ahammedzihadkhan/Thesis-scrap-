@@ -1,0 +1,5 @@
+Segment,Size,Mean silhouette,Minimum,Negative (%)
+Champions (VIP Loyalists),515,0.2607,-0.0413,5.24
+Loyal & Promising Regulars,1180,0.2222,-0.0161,0.93
+High-Potential / At-Risk,1071,0.2508,-0.0029,0.37
+Hibernating / Lost,1572,0.4359,-0.0215,0.25
