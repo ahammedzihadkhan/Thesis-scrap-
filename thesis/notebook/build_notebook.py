@@ -12,9 +12,14 @@ from nbclient import NotebookClient
 
 here = Path(__file__).resolve().parent
 # In Google Colab only the .ipynb is opened, so fetch the project first; does nothing anywhere else.
-COLAB_CELL = '''# Google Colab: get the project code and data folder first (skipped when run locally).
-import os, subprocess, sys
-if "google.colab" in sys.modules and not os.path.isdir("../data"):
+COLAB_CELL = '''# Google Colab (browser or the VS Code Colab extension): get the project code and data folder first.
+import os, subprocess
+try:
+    import google.colab  # only exists on a Colab runtime
+    IN_COLAB = True
+except ImportError:
+    IN_COLAB = False
+if IN_COLAB and not os.path.isdir("../data"):
     if not os.path.isdir("/content/kroypulse"):
         subprocess.run(["git", "clone", "-q", "--depth", "1", "https://github.com/ahammedzihadkhan/Thesis-scrap-.git", "/content/kroypulse"], check=True)
     os.chdir("/content/kroypulse/thesis/notebook")
@@ -31,7 +36,12 @@ for block in re.split(r"^# %%", src, flags=re.M)[1:]:
 nb = nbformat.v4.new_notebook(cells=cells, metadata={"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"}})
 # Inline figures in Jupyter (the script itself runs headless).
 nb.cells.insert(1, nbformat.v4.new_code_cell("%matplotlib inline"))
+nb.cells.insert(1, nbformat.v4.new_markdown_cell("### Show charts inside the notebook\nMakes every chart appear directly below the cell that draws it."))
 nb.cells.insert(1, nbformat.v4.new_code_cell(COLAB_CELL))
+nb.cells.insert(1, nbformat.v4.new_markdown_cell(
+    "### Google Colab setup\nIn Colab this downloads the project from GitHub and moves into the notebook folder; "
+    "on your own computer it does nothing. In Colab, use **Runtime → Run all**: the cells depend on each other, "
+    "so running a single cell on its own fails."))
 out = here / "Extended_RFM_Thesis.ipynb"
 if "--no-run" not in sys.argv:
     NotebookClient(nb, timeout=1800, kernel_name="python3", resources={"metadata": {"path": str(here)}}).execute()

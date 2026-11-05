@@ -23,8 +23,12 @@
 # | 11 | Guest phone-key simulation |
 # | 12 | Marketing queue |
 # | 13 | **New:** full Python pipeline on the Kaggle Daraz BD / Pickaboo data |
-# | 14 | **New:** early-stage customer segmentation (supervisor's question) |
+# | 14 | **New:** early-stage customer segmentation |
 # | 15 | **New:** external validation on a second, recent dataset (Olist, Brazil 2016–2018) with an 8-algorithm benchmark |
+
+# %% [markdown]
+# ### Setup: libraries, folders and helpers
+# Imports the Python libraries, finds the thesis folders and defines small helpers that save every figure and table for the thesis.
 
 # %%
 import json, time, warnings
@@ -100,6 +104,10 @@ def save_table(df, name, index=False):
 # The UCI Online Retail dataset (Chen et al., 2012): all transactions of a UK online gift retailer,
 # 01-12-2010 to 09-12-2011. If the CSV is missing it is downloaded once from the UCI repository.
 
+# %% [markdown]
+# ### 1a · Load the UCI Online Retail data
+# Reads the raw transactions. If the file is missing, it is downloaded from the UCI repository first.
+
 # %%
 csv_path = DATA / "online_retail.csv"
 if not csv_path.exists():
@@ -112,6 +120,10 @@ raw = pd.read_csv(csv_path, encoding="ISO-8859-1", dtype={"InvoiceNo": str, "Sto
 raw["InvoiceDate"] = pd.to_datetime(raw["InvoiceDate"], format="mixed")
 print(raw.shape)
 raw.head()
+
+# %% [markdown]
+# ### 1b · Clean the transactions
+# Applies the cleaning rules one by one and records how many rows each rule removes.
 
 # %%
 def clean(df):
@@ -142,6 +154,10 @@ RESULTS["missing_id_pct"] = round(100 * raw["CustomerID"].isna().mean(), 2)
 assert len(tx) == 392_692, "cleaning must reproduce the thesis row count"
 clean_log
 
+# %% [markdown]
+# ### 1c · Chart: cleaning funnel
+# How many rows remain after each cleaning rule.
+
 # %%
 fig, ax = plt.subplots(figsize=(7, 3.2))
 ax.barh(clean_log["Step"][::-1], clean_log["Rows remaining"][::-1], color="#3c6fb4")
@@ -155,6 +171,10 @@ savefig("f_cleaning_funnel")
 # For each customer: **R** days since last purchase (reference = day after the last transaction),
 # **F** distinct invoices, **M** total spend, **T** mean days between distinct purchase days (0 if one day),
 # **D** distinct products. Then `log(1+x)` and standardisation.
+
+# %% [markdown]
+# ### 2a · Build the five Extended RFM features
+# Computes Recency, Frequency, Monetary value, inter-purchase time (T) and basket depth (D) per customer, log-transforms and standardises them, and tests cluster tendency (Hopkins).
 
 # %%
 def build_features(t, ref):
@@ -208,6 +228,10 @@ RESULTS.update(customers=N, single_buyers=single, single_pct=round(100 * single 
 print(RESULTS)
 desc
 
+# %% [markdown]
+# ### 2b · Chart: feature distributions
+# Each feature before and after the log transform, and one-time versus repeat buyers.
+
 # %%
 fig, axes = plt.subplots(2, 5, figsize=(14, 5))
 for i, c in enumerate(FEATS):
@@ -223,6 +247,10 @@ savefig("f_single_vs_repeat")
 
 # %% [markdown]
 # ## Part 3 — Choosing the number of clusters
+
+# %% [markdown]
+# ### 3 · How many clusters? (k = 2 to 10)
+# Runs K-Means for every k and records the elbow, Silhouette and Davies-Bouldin index.
 
 # %%
 def kmeans(k, seed=SEED):
@@ -247,6 +275,10 @@ k_tbl
 # ## Part 4 — The four segments (K-Means, k = 4)
 # Clusters are ranked by mean spend and named from Champions down to Hibernating.
 
+# %% [markdown]
+# ### 4a · K-Means with k = 4
+# Clusters all customers into four segments and orders them by spend, so the first segment is always the Champions.
+
 # %%
 def rank_by_spend(labels, f):
     """Relabel clusters 0..k-1 by descending mean Monetary value, so label 0 is always the top spenders."""
@@ -270,6 +302,10 @@ save_table(med.rename(columns={"InterPurchase_Time": "T", "Basket_Depth": "D"}),
 RESULTS["segments"] = {s: {"n": int(prof.loc[s, "Customers"]), "share": float(prof.loc[s, "Share (%)"]), "revenue": float(prof.loc[s, "Revenue (%)"]),
                            **{c: float(prof.loc[s, c]) for c in FEATS}} for s in SEG_NAMES}
 prof
+
+# %% [markdown]
+# ### 4b · Charts: the four segments
+# Standardised profile of each segment, its share of customers and revenue, and a 3-D / PCA view.
 
 # %%
 z = pd.DataFrame(X, columns=FEATS).groupby(lab).mean()
@@ -308,6 +344,10 @@ savefig("f_clusters_3d_pca")
 # Their inter-purchase time is almost always 0, so their model uses **Tenure** (days since first order) instead of T.
 # Established customers keep the five Extended RFM features and four segments. Part 14 tests how reliable these
 # early-stage segments are and how well they predict future purchases.
+
+# %% [markdown]
+# ### 4c · Two-track segmentation
+# Early-stage customers (first order at most 90 days ago or at most 2 orders) and established customers are clustered separately (3 and 4 segments); the table shows where a single global model would have put the early-stage customers.
 
 # %%
 EARLY_FEATS = ["Recency", "Frequency", "Monetary", "Basket_Depth", "Tenure"]
@@ -363,8 +403,28 @@ savefig("f_two_track_segments")
 tp, track_q, xt
 
 # %% [markdown]
+# ### 4d · Chart: early-stage customers in the global model
+# Most brand-new and one-time customers would be labelled Hibernating / Lost by a single global model, which is why they get their own track.
+
+# %%
+# Where the single global model would have put the early-stage customers (the table above, as a heat map).
+fig, ax = plt.subplots(figsize=(7.5, 3))
+ax.imshow(xt.values, cmap="Blues")
+ax.set_xticks(range(len(xt.columns)), xt.columns, fontsize=9)
+ax.set_yticks(range(len(xt.index)), xt.index)
+for (r, c), v in np.ndenumerate(xt.values):
+    ax.text(c, r, v, ha="center", va="center", fontsize=9, color="white" if v > xt.values.max() / 2 else "black")
+ax.set_xlabel("Segment in the single global k = 4 model")
+ax.set_title("Early-stage customers in the global model")
+savefig("f_two_track_heatmap")
+
+# %% [markdown]
 # ## Part 5 — Six-algorithm benchmark with a validity check
 # A clustering is a **valid segmentation** only if it has ≥ 2 clusters and every cluster holds between 2% and 80% of customers.
+
+# %% [markdown]
+# ### 5 · Algorithm benchmark with a validity rule
+# Compares eight clustering algorithms on the same features. A result counts as valid only with at least two clusters, none smaller than 2% and none larger than 80% of customers.
 
 # %%
 def validity(labels):
@@ -408,6 +468,10 @@ pd.concat([bench_tbl, valid_tbl.drop(columns="Algorithm")], axis=1)
 # %% [markdown]
 # ## Part 6 — Segment quality, stability, generalisation and seed robustness
 
+# %% [markdown]
+# ### 6a · Silhouette per segment
+# How well each customer fits its own segment, with the silhouette plot.
+
 # %%
 sil = silhouette_samples(X, lab)
 seg_sil = pd.DataFrame({"Segment": SEG_NAMES, "Size": [int((lab == i).sum()) for i in range(4)],
@@ -428,6 +492,10 @@ ax.axvline(sil.mean(), ls="--", color="black", lw=1); ax.set_yticks([]); ax.set_
 ax.set_title(f"Silhouette plot, K-Means k=4 (mean {sil.mean():.3f})")
 savefig("f_silhouette_plot")
 seg_sil
+
+# %% [markdown]
+# ### 6b · Stability and generalisation
+# Bootstrap resampling (does the partition reproduce?), 20 random seeds, and an 80/20 train-test split.
 
 # %%
 def bootstrap_ari(Xm, k, B=30, seed=SEED):
@@ -465,6 +533,10 @@ stab_tbl
 # and judged on what customers did **after** it: did they buy again (AUC), and how much did they spend
 # (Spearman ρ, adjusted R² of log spend). Every segmentation is turned into a predictor the same way:
 # one-hot segment → logistic / linear regression, out-of-fold predictions from 5-fold CV.
+
+# %% [markdown]
+# ### 7a · Out-of-sample prediction
+# Segments are built only from orders before 1 September 2011; the AUC measures how well each segmentation ranks customers by whether they buy again afterwards.
 
 # %%
 CUTOFF = pd.Timestamp("2011-09-01")
@@ -526,6 +598,10 @@ sup_s = cross_val_predict(LinearRegression(), Xp, np.log1p(spend), cv=KFold(5, s
 RESULTS["supervised_auc"], RESULTS["supervised_rho"] = round(roc_auc_score(y, sup_p), 3), round(spearmanr(sup_s, spend).statistic, 3)
 oos_tbl
 
+# %% [markdown]
+# ### 7b · Confidence intervals and what each segment did next
+# Bootstrap 95% intervals for the AUC differences, and the real repurchase rate and future revenue of each segment.
+
 # %%
 def boot_diff(a, b, B=200, seed=SEED):
     """Bootstrap the difference in AUC between two out-of-fold predictors (same customers resampled for both)."""
@@ -570,6 +646,10 @@ ci_tbl
 # %% [markdown]
 # ## Part 8 — Feature ablation: does Extended RFM change the segments?
 
+# %% [markdown]
+# ### 8 · Extended versus plain RFM
+# How many customers change segment when T and D are added, and how stable each version is.
+
 # %%
 lab_plain = methods["KM plain RFM (k=4)"]
 RESULTS["moved_vs_plain_pct"] = round(100 * (lab_pre != lab_plain).mean(), 1)
@@ -582,6 +662,10 @@ print({k: RESULTS[k] for k in ["moved_vs_plain_pct", "ari_ext_vs_plain", "stab_p
 # ## Part 9 — New: robustness across five cutoff dates
 # The pre-defense used one cutoff (1 Sep 2011) whose holdout includes the holiday peak. Here every cutoff
 # uses the **same 90-day outcome window**, and the earlier cutoffs exclude the holiday season entirely.
+
+# %% [markdown]
+# ### 9 · Five cutoff dates
+# Repeats the out-of-sample test at five cutoffs with a fixed 90-day horizon, so the result does not depend on one date.
 
 # %%
 cut_rows = []
@@ -611,6 +695,10 @@ cut_tbl
 # One-time buyers have T = 0 by definition and pull the geometry. Stage 1 puts every F = 1 customer in its
 # own segment; stage 2 clusters only repeat customers. Compared out of sample against single-stage K-Means.
 
+# %% [markdown]
+# ### 10 · Two-stage model
+# Puts one-time buyers in their own group, clusters only repeat buyers, and compares the prediction with single-stage K-Means.
+
 # %%
 def two_stage(f, k_repeat):
     lb = np.full(len(f), -1)
@@ -638,6 +726,10 @@ ts_tbl
 # The UCI data has no phone numbers. Each customer ID is treated as a phone key; a share *e* of customers is
 # **merged** in pairs (shared phone) and the same share of repeat customers is **split** across two numbers
 # (changed phone). Five runs per error level, on the pre-cutoff data so the repurchase AUC can be measured.
+
+# %% [markdown]
+# ### 11 · Phone-number identity simulation
+# Adds synthetic merge and split errors (0-30%) to customer identities and measures how much the segments and the prediction degrade.
 
 # %%
 def pairs(counts):
@@ -699,6 +791,10 @@ sim_tbl
 # ## Part 12 — Marketing queue
 # One message pair per customer. **Nothing is sent**: a real deployment needs consent and an opt-out.
 
+# %% [markdown]
+# ### 12 · Marketing queue
+# A strategy and an example WhatsApp message for each of the seven two-track segments. Nothing is sent.
+
 # %%
 # Two-track queue (Part 4b): established customers get value-based offers, early-stage customers get lifecycle messages.
 TRACK_SHORT = SHORT + ["Promising New", "Developing New", "One-and-Done"]
@@ -740,6 +836,10 @@ q.groupby("Segment_ID").head(1)[["Segment", "CustomerID", "Email", "WhatsApp"]]
 # Same cleaning, identity key (phone number), features and K-Means as above. This file has only 25 customers,
 # so it is a **practical test of portability**, not evidence of accuracy.
 
+# %% [markdown]
+# ### 13 · Daraz BD / Pickaboo file
+# Runs the full pipeline on the small Bangladeshi marketplace file, with the phone number as the customer key.
+
 # %%
 dz = pd.read_csv(DATA / "daraz_pickaboo_orders.csv", dtype={"whatsapp_phone": str})
 dz["created_at"] = pd.to_datetime(dz["created_at"])
@@ -765,13 +865,17 @@ RESULTS["daraz_customers"] = int(dz_f.shape[0])
 dz_sum
 
 # %% [markdown]
-# ## Part 14 — New: early-stage customer segmentation (supervisor's question)
+# ## Part 14 — New: early-stage customer segmentation
 # *Is segmentation reliable for new customers or customers with little purchase history, and how well does it
 # predict their future behaviour?*
 #
 # **Early-stage** at the cutoff = first purchase within the previous 90 days **or** at most 2 orders.
 # 14a size and value · 14b reliability (stability, label persistence) · 14c effectiveness (out-of-sample, within the group)
 # · 14d cold-start curve (by order count, and by length of observed history on a fixed cohort).
+
+# %% [markdown]
+# ### 14a · Early-stage and established customers at the cutoff
+# How many customers are early-stage before the cutoff, their share of revenue and how many bought again.
 
 # %%
 first_buy = pre.groupby("CustomerID")["InvoiceDate"].min().reindex(fpre.index)
@@ -790,6 +894,10 @@ save_table(ov, "t_early_overview")
 RESULTS["early_n"], RESULTS["early_pct"] = int(early.sum()), round(100 * early.mean(), 1)
 RESULTS["early_repurchase_pct"], RESULTS["est_repurchase_pct"] = round(100 * y[early].mean(), 1), round(100 * y[est].mean(), 1)
 ov
+
+# %% [markdown]
+# ### 14b · A dedicated early-stage model
+# Clusters only the early-stage customers (R, F, M, D and tenure), chooses k, names the three segments and checks whether an early label still holds once the full history is known.
 
 # %%
 # 14b — a dedicated early-stage model. T is almost always 0 for these customers, so Tenure (days since first order) replaces it.
@@ -826,6 +934,51 @@ persist = pd.DataFrame({"Group": ["Early-stage", "Established"],
 save_table(persist, "t_early_reliability")
 ek_tbl, ep, persist
 
+# %% [markdown]
+# ### 14b-i · Chart: early-stage segment profiles
+# Mean standardised value of each feature in the three early-stage segments (above 0 means higher than the average early-stage customer).
+
+# %%
+# Visualizing early-stage segment profiles using standardized (z-score) means
+ze = pd.DataFrame(Xe, columns=EARLY_FEATS).groupby(early_lab).mean()
+
+fig, ax = plt.subplots(figsize=(8, 4.2))
+w = 0.25
+x_indices = np.arange(len(EARLY_FEATS))
+
+for i, name in enumerate(EARLY_NAMES):
+    ax.bar(x_indices + (i - 1) * w, ze.loc[i], w, label=name, color=TRACK_COLORS[4 + i])
+
+ax.set_xticks(x_indices)
+ax.set_xticklabels(["Recency", "Frequency", "Monetary", "Basket Depth", "Tenure"])
+ax.axhline(0, color="black", lw=0.6)
+ax.set_ylabel("Mean z-score")
+ax.set_title("Standardised Early-Stage Segment Profiles")
+ax.legend(loc="upper right", fontsize=9)
+savefig("f_early_stage_profiles")
+
+# %% [markdown]
+# ### 14b-ii · Chart: size and outcome of each early-stage segment
+# Customers per early-stage segment, the share who bought again after the cutoff (dashed line: established customers) and their future spend.
+
+# %%
+# Size of each early-stage segment and what its customers did after the cutoff.
+fig, axes = plt.subplots(1, 3, figsize=(12, 3.6))
+for ax, col, title in zip(axes, ["Customers", "Bought again (%)", "Future spend per customer"],
+                          ["Customers at the cutoff", "Bought again after the cutoff (%)", "Future spend per customer"]):
+    ax.bar(range(3), ep[col], color=TRACK_COLORS[4:7])
+    ax.set_xticks(range(3), [n.replace(" ", "\n", 1) for n in EARLY_NAMES], fontsize=8)
+    ax.set_title(title, fontsize=10)
+    for x, v in enumerate(ep[col]):
+        ax.text(x, v, f"{v:.1f}%" if "%" in col else f"{v:,.0f}", ha="center", va="bottom", fontsize=8)
+axes[1].axhline(100 * y[est].mean(), ls="--", color="grey", lw=1, label="Established customers")
+axes[1].legend(fontsize=8)
+savefig("f_early_segment_outcomes")
+
+# %% [markdown]
+# ### 14c · Prediction inside the early-stage group
+# Out-of-sample AUC of every method using only early-stage customers, with bootstrap confidence intervals.
+
 # %%
 # 14c — effectiveness inside the early-stage group (out of sample, same protocol as Part 7).
 ye, se = y[early], spend[early]
@@ -861,6 +1014,10 @@ eci = save_table(pd.DataFrame([
                       ("Early K-Means k=3 minus quintile RFM", "Early-stage K-Means (k=3)", "Classic quintile RFM score")]]), "t_early_ci")
 eo_tbl, eci
 
+# %% [markdown]
+# ### 14d · Prediction inside order-count groups
+# How well segments rank customers who have the same number of orders.
+
 # %%
 # 14d (i) — how well does the segmentation rank customers inside each history stratum?
 p_glob = oof["KM Extended RFM (k=4)"]
@@ -874,6 +1031,10 @@ for name, m in strata:
                     "Segments present": len(set(lab_pre[m])), "AUC within stratum (segments)": round(auc_m, 3), "AUC within stratum (supervised)": round(auc_sup, 3)})
 st_tbl = save_table(pd.DataFrame(st_rows), "t_early_strata")
 st_tbl
+
+# %% [markdown]
+# ### 14e · How much history is needed?
+# Follows one fixed group of customers, builds segments from their first 30, 60, 90 and 180 days, and tests how well each predicts the next 90 days.
 
 # %%
 # 14d (ii) — history-window experiment on ONE fixed cohort: build segments from each customer's first W days only,
@@ -920,6 +1081,10 @@ hw_tbl
 # Same features, same K-Means, same out-of-sample protocol. Hierarchical methods are O(n²) in memory, so the
 # 8-algorithm benchmark uses a fixed random sample of 10,000 customers for every algorithm.
 
+# %% [markdown]
+# ### 15a · Load the Olist data
+# Reads the Brazilian Olist marketplace orders (downloaded from Kaggle if missing) and keeps delivered orders with prices.
+
 # %%
 OL = DATA / "olist"
 if not (OL / "olist_orders_dataset.csv").exists():
@@ -949,6 +1114,10 @@ RESULTS["olist_customers"] = len(o_feat)
 RESULTS["olist_single_pct"] = round(100 * (o_feat["Frequency"] == 1).mean(), 2)
 RESULTS["olist_hopkins"] = round(hopkins(o_X), 3)
 o_feat.describe().T
+
+# %% [markdown]
+# ### 15b · Olist: number of clusters and benchmark
+# The same k selection and eight-algorithm benchmark as on UCI, on a fixed sample of 10,000 customers.
 
 # %%
 rng_o = np.random.default_rng(SEED)
@@ -993,6 +1162,10 @@ save_table(o_prof.rename_axis("Segment").rename(columns={"InterPurchase_Time": "
 RESULTS["olist_silhouette_k4"] = float(o_k_tbl.loc[o_k_tbl["k"] == 4, "Silhouette (10k sample)"].iloc[0])
 o_k_tbl, o_bench_tbl
 
+# %% [markdown]
+# ### 15c · Olist: out-of-sample prediction
+# Segments from orders before 1 March 2018; outcome: a purchase in the next 180 days.
+
 # %%
 # Out-of-sample on Olist: segments from orders before 1 Mar 2018, repurchase in the next 180 days.
 O_CUT = pd.Timestamp("2018-03-01")
@@ -1023,6 +1196,10 @@ o_ci = save_table(pd.DataFrame([dict(zip(["Comparison", "Mean", "95% CI low", "9
 RESULTS["olist_oos_customers"], RESULTS["olist_repurchase_pct"] = len(o_fp), round(100 * o_y.mean(), 2)
 RESULTS["olist_auc_k4"] = float(o_oos_tbl.loc[o_oos_tbl["Method"] == "KM Extended RFM (k=4)", "Repurchase AUC"].iloc[0])
 o_oos_tbl, o_ci
+
+# %% [markdown]
+# ### 15d · UCI and Olist side by side
+# One table and chart comparing the two datasets.
 
 # %%
 # The two datasets side by side.
@@ -1056,6 +1233,10 @@ cmp_tbl
 # At the cutoff (1 Jul 2023) every registered user is placed in one group:
 # **new account** (created ≤ 90 days ago) · **low history** (older account, ≤ 2 orders) · **established** ·
 # **registered, never bought**. Outcome: purchase in the next 180 days.
+
+# %% [markdown]
+# ### 16a · Load TheLook (account-creation dates)
+# Reads users and order items (from Kaggle if missing) and places every registered user in a group at the 1 July 2023 cutoff.
 
 # %%
 TL = DATA / "thelook"
@@ -1100,6 +1281,10 @@ RESULTS["tl_users"], RESULTS["tl_buyers_pre"] = len(reg), len(t_fp)
 RESULTS["tl_single_pct"] = round(100 * (t_fp["Frequency"] == 1).mean(), 1)
 t_ov
 
+# %% [markdown]
+# ### 16b · TheLook: segmentation of buyers
+# k selection and benchmark on TheLook buyers, with the same protocol as before.
+
 # %%
 # Segmentation of buyers (same protocol as UCI / Olist).
 t_X = scale(t_fp)
@@ -1126,6 +1311,10 @@ RESULTS["tl_stability_k4"] = round(bootstrap_ari(t_X, 4, B=10).mean(), 4)
 t_lab = rank_by_spend(kmeans(4).fit_predict(t_X), t_fp)
 RESULTS["tl_silhouette_k4"] = float(pd.DataFrame(t_k_rows).set_index("k").loc[4, "Silhouette (10k sample)"])
 pd.DataFrame(t_k_rows), pd.DataFrame(t_bench)
+
+# %% [markdown]
+# ### 16c · TheLook: does profile information help?
+# Segments, purchase history, and history plus profile (age, gender, traffic source, account age) predicting a purchase in the next 180 days.
 
 # %%
 # Out-of-sample: do segments, and do the extra profile parameters, predict who buys in the next 180 days?
@@ -1168,6 +1357,10 @@ save_table(pd.DataFrame([dict(zip(["Comparison", "Mean", "95% CI low", "95% CI h
 RESULTS["tl_repurchase_pct"] = round(100 * t_y.mean(), 1)
 RESULTS["tl_auc_k4"] = float(t_oos_tbl.loc[t_oos_tbl["Method"] == "KM Extended RFM (k=4)", "Repurchase AUC"].iloc[0])
 t_oos_tbl
+
+# %% [markdown]
+# ### 16d · Predictive power by account age
+# Splits buyers by account age, tests a model built only for new accounts, and tests whether the profile predicts the first purchase of users who never bought.
 
 # %%
 # Early-stage segmentation by ACCOUNT AGE: how predictive are segments for brand-new vs old accounts?
@@ -1229,6 +1422,10 @@ t_band, t_new, {k: RESULTS[k] for k in ["tl_never_n", "tl_never_convert_pct", "t
 # One test function runs the same protocol on every dataset: K-Means k=4 quality and stability, out-of-sample
 # repurchase AUC of every method, and the AUC inside the early-stage and established groups.
 
+# %% [markdown]
+# ### 17a · Load Online Retail II and CDNOW
+# Downloads (if missing) and cleans the first year of Online Retail II and the CDNOW benchmark. If the CDNOW site refuses the download, the error says how to add the file by hand.
+
 # %%
 R2 = DATA / "retail2"
 r2_csv = R2 / "online_retail_ii_year1.csv"
@@ -1260,6 +1457,10 @@ cd_raw = cd_raw[cd_raw["Amount"] > 0].reset_index(drop=True)
 cd_tx = pd.DataFrame({"CustomerID": cd_raw["CustomerID"], "InvoiceNo": cd_raw.index.astype(str),
                       "InvoiceDate": pd.to_datetime(cd_raw["Date"], format="%Y%m%d"), "StockCode": "cd", "Amount": cd_raw["Amount"]})
 print(len(r2_tx), r2_tx["CustomerID"].nunique(), len(cd_tx), cd_tx["CustomerID"].nunique())
+
+# %% [markdown]
+# ### 17b · The same protocol on five datasets, with significance tests
+# One function runs the whole protocol on each dataset; the four comparisons are tested with a paired bootstrap and Holm's correction over all 20 tests.
 
 # %%
 def boot_test(pa, pb, yy, B=1000, seed=SEED):
@@ -1371,6 +1572,10 @@ save_table(sig.assign(p=sig["p"].map(lambda v: "<0.001" if v <= 0.001 else f"{v:
                       **{"Holm p": sig["Holm p"].map(lambda v: "<0.001" if v <= 0.001 else f"{v:.3f}")}), "t_all_significance")
 all_tbl.T, sig
 
+# %% [markdown]
+# ### 17c · How much history is needed, on real data
+# The history-window experiment on three more datasets, with confidence intervals for each gain, and the five-dataset chart.
+
 # %%
 history_curve("UCI Online Retail", tx)  # only for its confidence intervals; the UCI curve itself is Part 14d
 hist_rows = history_curve("Online Retail II year 1", r2_tx) + history_curve("CDNOW", cd_tx) + history_curve("Olist", o_tx)
@@ -1400,6 +1605,10 @@ hist_tbl
 # %% [markdown]
 # ## Save headline results
 # `outputs/results.json` holds every scalar quoted in the thesis text; `outputs/tables/*.tex` are included directly by the LaTeX source.
+
+# %% [markdown]
+# ### Save the headline numbers
+# Writes every number quoted in the thesis text to outputs/results.json.
 
 # %%
 def to_py(o):
