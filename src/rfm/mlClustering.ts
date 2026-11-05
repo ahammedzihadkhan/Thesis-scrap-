@@ -7,8 +7,66 @@ import {
   ModelHealthMetrics,
   TemporalHoldoutResult,
   CleanedTransaction,
+  EarlySegment,
 } from './types';
 import { calculate5DRFM, preprocessRFM } from './rfmCalculator';
+
+/** Early-stage track: lifecycle messages instead of value-based offers (thesis Section "Marketing Queue"). */
+export const EARLY_SEGMENT_METAS: Record<EarlySegment, { name: string; bn: string; color: string; meaning: string; action: string; message: string }> = {
+  'Promising Newcomers': {
+    name: 'Promising newcomers', bn: 'সম্ভাবনাময় নতুন কাস্টমার', color: '#0e7490',
+    meaning: 'New, but already ordered again or bought many items.',
+    action: 'Thank them and show related products, so they become regulars.',
+    message: 'Hi {name}, thank you for shopping with {shop_name} again! We picked a few new items we think you will like. Reply here and we will send photos.',
+  },
+  'Developing Newcomers': {
+    name: 'Just joined', bn: 'সদ্য যুক্ত কাস্টমার', color: '#0369a1',
+    meaning: 'First order only a few weeks ago.',
+    action: 'Welcome them and offer free delivery on a second order.',
+    message: 'Welcome to {shop_name}, {name}! Thank you for your first order. Your second order comes with free delivery. Just reply to this message to order.',
+  },
+  'One-and-Done Risk': {
+    name: 'Bought once, not back', bn: 'একবার কিনেছেন', color: '#475569',
+    meaning: 'Bought once a while ago and have not returned.',
+    action: 'Send a small second-order code to bring them back.',
+    message: 'Hi {name}, we would love to see you again at {shop_name}! Use code SECOND10 for 10% off your second order.',
+  },
+};
+
+/**
+ * Two-track segmentation (thesis Part 4b): Early-Stage customers get their own K-Means (k=3) on
+ * log1p + z-scored Recency, Frequency, Monetary, Basket depth and Tenure. Names: the cluster with the
+ * highest mean spend is Promising; of the other two, the one with the more recent first order is Developing.
+ */
+export function assignEarlySegments(customers: CustomerRFMTD[]): CustomerRFMTD[] {
+  const idx = customers.flatMap((c, i) => (c.lifecycleStage === 'Early-Stage' ? [i] : []));
+  if (idx.length === 0) return customers;
+  const seg = new Map<number, EarlySegment>();
+  if (idx.length < 9) {
+    // shortcut: below 9 customers three clusters are noise, so the segment definitions are applied as rules.
+    for (const i of idx) {
+      const c = customers[i];
+      seg.set(i, c.frequency >= 2 ? 'Promising Newcomers' : (c.tenureDays ?? 0) <= 90 ? 'Developing Newcomers' : 'One-and-Done Risk');
+    }
+  } else {
+    const raw = idx.map((i) => {
+      const c = customers[i];
+      return [c.recency, c.frequency, c.monetary, c.basketDepth, c.tenureDays ?? 0].map((x) => Math.log1p(Math.max(0, x)));
+    });
+    const mean = raw[0].map((_, d) => raw.reduce((s, r) => s + r[d], 0) / raw.length);
+    const std = mean.map((m, d) => Math.sqrt(raw.reduce((s, r) => s + (r[d] - m) ** 2, 0) / raw.length) || 1);
+    const { labels } = runKMeans(raw.map((r) => r.map((v, d) => (v - mean[d]) / std[d])), 3, 10, 80);
+    const avg = (c: number, key: 'monetary' | 'tenureDays') => {
+      const m = idx.filter((_, j) => labels[j] === c);
+      return m.length ? m.reduce((s, i) => s + (customers[i][key] ?? 0), 0) / m.length : -Infinity;
+    };
+    const promising = [0, 1, 2].reduce((a, b) => (avg(b, 'monetary') > avg(a, 'monetary') ? b : a));
+    const [developing, oneAndDone] = [0, 1, 2].filter((c) => c !== promising).sort((a, b) => avg(a, 'tenureDays') - avg(b, 'tenureDays'));
+    const name: Record<number, EarlySegment> = { [promising]: 'Promising Newcomers', [developing]: 'Developing Newcomers', [oneAndDone]: 'One-and-Done Risk' };
+    idx.forEach((i, j) => seg.set(i, name[labels[j]]));
+  }
+  return customers.map((c, i) => (seg.has(i) ? { ...c, earlySegment: seg.get(i) } : c));
+}
 
 export const PERSONA_METAS: Record<PersonaType, PersonaMeta> = {
   'Champions (VIP Loyalists)': {

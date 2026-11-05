@@ -1,0 +1,21 @@
+Dataset,Hypothesis,AUC difference,95% CI low,95% CI high,p,Holm p,Significant (Holm 5%)
+UCI Online Retail,k=4 vs guest rule,0.057,0.045,0.069,<0.001,0.020,True
+UCI Online Retail,k=4 vs k=2,0.035,0.024,0.048,<0.001,0.020,True
+UCI Online Retail,k=4 vs quintile RFM,-0.004,-0.016,0.008,0.506,1.000,False
+UCI Online Retail,k=4 vs plain RFM k=4,0.005,-0.007,0.017,0.426,1.000,False
+Online Retail II year 1,k=4 vs guest rule,0.051,0.034,0.067,<0.001,0.020,True
+Online Retail II year 1,k=4 vs k=2,0.037,0.021,0.052,<0.001,0.020,True
+Online Retail II year 1,k=4 vs quintile RFM,0.006,-0.008,0.02,0.370,1.000,False
+Online Retail II year 1,k=4 vs plain RFM k=4,0.025,0.007,0.042,0.012,0.084,False
+CDNOW,k=4 vs guest rule,0.039,0.034,0.044,<0.001,0.020,True
+CDNOW,k=4 vs k=2,0.029,0.023,0.034,<0.001,0.020,True
+CDNOW,k=4 vs quintile RFM,0.009,0.004,0.014,0.002,0.020,True
+CDNOW,k=4 vs plain RFM k=4,0.001,-0.003,0.005,0.656,1.000,False
+Olist,k=4 vs guest rule,0.041,0.016,0.065,<0.001,0.020,True
+Olist,k=4 vs k=2,0.04,0.016,0.065,<0.001,0.020,True
+Olist,k=4 vs quintile RFM,0.043,0.011,0.074,0.006,0.048,True
+Olist,k=4 vs plain RFM k=4,0.007,-0.016,0.029,0.542,1.000,False
+TheLook,k=4 vs guest rule,0.054,0.045,0.063,<0.001,0.020,True
+TheLook,k=4 vs k=2,0.054,0.046,0.063,<0.001,0.020,True
+TheLook,k=4 vs quintile RFM,0.017,0.009,0.025,<0.001,0.020,True
+TheLook,k=4 vs plain RFM k=4,0.005,0.001,0.01,0.020,0.120,False

@@ -27,3 +27,7 @@ thesis/data/cdnow/
 
 # Jupyter autosave copies
 .ipynb_checkpoints/
+
+# The thesis paper (PDF and LaTeX, including generated .tex tables) stays local and is never pushed
+*.pdf
+*.tex

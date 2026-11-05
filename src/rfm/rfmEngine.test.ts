@@ -17,6 +17,7 @@ import {
   calculateClusteringMetrics,
   calculateHopkins,
   rankClustersToPersonas,
+  assignEarlySegments,
   runAlgorithmBenchmark,
   runTemporalHoldoutCheck,
   adjustedRandIndex,
@@ -193,12 +194,38 @@ test('Adjusted Rand Index and live bootstrap stability', () => {
 });
 
 test('Early-stage flag: new or low-history customers', () => {
-  const uciData = generateUCIOnlineRetailSample();
-  const { cleanedRows } = stitchAndCleanData(uciData, autoDetectColumnMapping(Object.keys(uciData[0])));
+  // The UCI sample has no early-stage customers, so the Bangladeshi demo shop is used to exercise both branches.
+  const data = generateRichBangladeshiStoreSample();
+  const { cleanedRows } = stitchAndCleanData(data, autoDetectColumnMapping(Object.keys(data[0])));
   const { customerRFMList } = calculate5DRFM(cleanedRows);
   for (const c of customerRFMList) {
     assert.equal(c.lifecycleStage === 'Early-Stage', c.tenureDays! <= 90 || c.frequency <= 2);
   }
+  assert.ok(customerRFMList.some((c) => c.lifecycleStage === 'Early-Stage'), 'sample contains early-stage customers');
+  assert.ok(customerRFMList.some((c) => c.lifecycleStage === 'Established'), 'sample contains established customers');
+});
+
+test('Two-track: every early-stage customer gets one of three lifecycle segments, named by profile', () => {
+  // Three clear newcomer profiles (5 each, slightly jittered) plus established customers that must stay untouched.
+  const mk = (i: number, frequency: number, tenureDays: number, monetary: number, recency: number, basketDepth: number, stage: 'Early-Stage' | 'Established'): CustomerRFMTD => ({
+    customerKey: `c${i}`, isGuest: false, firstPurchaseDate: new Date(), lastPurchaseDate: new Date(), recency: recency + i, frequency,
+    monetary: monetary + 7 * i, avgOrderValue: monetary / frequency, interPurchaseTime: 0, basketDepth, isSinglePurchase: frequency === 1, tenureDays: tenureDays + i, lifecycleStage: stage,
+  });
+  const input = [
+    ...[0, 1, 2, 3, 4].map((i) => mk(i, 2, 60, 1500, 10, 50, 'Early-Stage')),
+    ...[5, 6, 7, 8, 9].map((i) => mk(i, 1, 20, 300, 20, 5, 'Early-Stage')),
+    ...[10, 11, 12, 13, 14].map((i) => mk(i, 1, 250, 280, 250, 5, 'Early-Stage')),
+    ...[15, 16, 17].map((i) => mk(i, 9, 400, 5000, 15, 80, 'Established')),
+  ];
+  const out = assignEarlySegments(input);
+  for (const c of out) assert.equal(Boolean(c.earlySegment), c.lifecycleStage === 'Early-Stage');
+  assert.deepEqual(out.slice(0, 15).map((c) => c.earlySegment), [
+    ...Array(5).fill('Promising Newcomers'), ...Array(5).fill('Developing Newcomers'), ...Array(5).fill('One-and-Done Risk'),
+  ]);
+
+  // Below 9 early-stage customers the definitions are applied as rules.
+  const tiny = assignEarlySegments([mk(0, 2, 200, 100, 5, 3, 'Early-Stage'), mk(1, 1, 20, 100, 20, 3, 'Early-Stage'), mk(2, 1, 300, 100, 300, 3, 'Early-Stage')]);
+  assert.deepEqual(tiny.map((c) => c.earlySegment), ['Promising Newcomers', 'Developing Newcomers', 'One-and-Done Risk']);
 });
 
 test('WhatsApp Bulk Tool Export formats E.164 phone numbers and generates WATI/AiSensy CSV', () => {
@@ -292,6 +319,14 @@ test('WhatsApp Bulk Tool Export formats E.164 phone numbers and generates WATI/A
   });
   assert.ok(!evil.csvContent.includes('"=HYPERLINK'), 'formula is neutralised');
   assert.ok(evil.csvContent.includes(`"'=HYPERLINK`), 'name is kept, as text');
+
+  // A new customer gets the lifecycle welcome, not the Champions discount.
+  const newbie = generateWhatsAppBulkExport([{ ...testCustomers[0], earlySegment: 'Developing Newcomers' }], {
+    toolFormat: 'clean_phone_list', segmentFilter: 'All', onlyValidPhones: true, shopName: 'S', currencySymbol: 'Tk ',
+    campaignConfigs: { 'Champions (VIP Loyalists)': { persona: 'Champions (VIP Loyalists)', discountCode: 'C', discountValue: 'x', headline: 'h', messageTemplate: 'Hi {name} OFFERMARK' } } as any,
+  });
+  assert.ok(newbie.csvContent.includes('Welcome to S'), 'lifecycle message used');
+  assert.ok(!newbie.csvContent.includes('OFFERMARK'), 'segment offer not used');
 });
 
 test('Extended synthetic Bangladeshi retail demo generates 150+ realistic orders', () => {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CustomerRFMTD, PersonaType, CampaignConfig } from '../rfm/types';
-import { PERSONA_METAS } from '../rfm/mlClustering';
+import { PERSONA_METAS, EARLY_SEGMENT_METAS } from '../rfm/mlClustering';
 import {
   MessageSquare,
   Mail,
@@ -139,7 +139,8 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
       ? `${recProfile.primaryRecommendation.discountPct}% Off (${recProfile.primaryRecommendation.recommendationReason})`
       : cfg.discountValue;
 
-    return cfg.messageTemplate
+    // Early-stage customers get a lifecycle message instead of a segment offer (two-track strategy).
+    return (c.earlySegment ? EARLY_SEGMENT_METAS[c.earlySegment].message : cfg.messageTemplate)
       .replace(/{name}/g, name)
       .replace(/{shop_name}/g, shopName)
       .replace(/{discount_code}/g, cfg.discountCode)
@@ -708,7 +709,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
 
                   const mailtoUrl = c.email
                     ? `mailto:${c.email}?subject=${encodeURIComponent(
-                        campaignConfigs[c.persona || 'Champions (VIP Loyalists)'].headline
+                        c.earlySegment ? `Thank you from ${shopName}` : campaignConfigs[c.persona || 'Champions (VIP Loyalists)'].headline
                       )}&body=${encodeURIComponent(message)}`
                     : '';
 
@@ -739,16 +740,22 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
                       </td>
 
                       <td className="py-2.5 px-3">
-                        <span
-                          className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md"
-                          style={{
-                            backgroundColor: meta.bgColor,
-                            color: meta.color,
-                            border: `1px solid ${meta.borderColor}`,
-                          }}
-                        >
-                          {meta.title}
-                        </span>
+                        {c.earlySegment ? (
+                          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200" style={{ color: EARLY_SEGMENT_METAS[c.earlySegment].color }}>
+                            New · {EARLY_SEGMENT_METAS[c.earlySegment].name}
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md"
+                            style={{
+                              backgroundColor: meta.bgColor,
+                              color: meta.color,
+                              border: `1px solid ${meta.borderColor}`,
+                            }}
+                          >
+                            {meta.title}
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-2.5 px-3 text-slate-500 text-[11px]">

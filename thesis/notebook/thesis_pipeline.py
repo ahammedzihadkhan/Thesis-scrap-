@@ -1257,8 +1257,31 @@ cd_tx = pd.DataFrame({"CustomerID": cd_raw["CustomerID"], "InvoiceNo": cd_raw.in
 print(len(r2_tx), r2_tx["CustomerID"].nunique(), len(cd_tx), cd_tx["CustomerID"].nunique())
 
 # %%
+def boot_test(pa, pb, yy, B=1000, seed=SEED):
+    """Paired bootstrap of AUC(a) - AUC(b): mean, 95% CI and a two-sided p-value (share of resamples across zero)."""
+    rng = np.random.default_rng(seed)
+    d = np.array([roc_auc_score(yy[i], pa[i]) - roc_auc_score(yy[i], pb[i]) for i in (rng.integers(0, len(yy), len(yy)) for _ in range(B))])
+    return d.mean(), np.percentile(d, 2.5), np.percentile(d, 97.5), max(min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean())), 1 / B)
+
+
+def holm(p):
+    """Holm step-down adjusted p-values (family-wise error control over all tests)."""
+    p = np.asarray(p, float)
+    o = np.argsort(p)
+    adj = np.empty_like(p)
+    adj[o] = np.minimum(1, np.maximum.accumulate((len(p) - np.arange(len(p))) * p[o]))
+    return adj
+
+
+assert np.allclose(holm([0.01, 0.04, 0.03]), [0.03, 0.06, 0.06])
+
+# The four comparisons of the main analysis (t_oos_ci), unchanged for the replication: none added or dropped.
+HYPOTHESES = [("k=4 vs guest rule", "guest"), ("k=4 vs k=2", "k2"), ("k=4 vs quintile RFM", "quintile"), ("k=4 vs plain RFM k=4", "plain")]
+SIG = []
+
+
 def robustness_test(name, real, txd, cutoff, horizon_days):
-    """The thesis protocol in one call: returns one summary row for the cross-dataset table."""
+    """The thesis protocol in one call: returns one summary row for the cross-dataset table and adds its tests to SIG."""
     cutoff = pd.Timestamp(cutoff)
     pre = txd[txd["InvoiceDate"] < cutoff]
     post = txd[(txd["InvoiceDate"] >= cutoff) & (txd["InvoiceDate"] < cutoff + pd.Timedelta(days=horizon_days))]
@@ -1270,15 +1293,21 @@ def robustness_test(name, real, txd, cutoff, horizon_days):
     smp = np.random.default_rng(SEED).choice(len(Xd), min(10_000, len(Xd)), replace=False)
     first = pre.groupby("CustomerID")["InvoiceDate"].min().reindex(f.index)
     early_ = ((cutoff - first).dt.days.values <= 90) | (f["Frequency"].values <= 2)
-    auc = lambda lb, m=slice(None): round(evaluate(lb[m], y_[m], spend_[m])[0]["auc"], 3)
+    auc = lambda lb, m: round(evaluate(lb[m], y_[m], spend_[m])[0]["auc"], 3)
+    labs = {"k4": lab4, "guest": (f["Frequency"] > 1).astype(int).values, "quintile": quintile_rfm(f), "k2": km_labels(f, 2), "plain": km_labels(f, 4, RFM3)}
+    p = {m: evaluate(lb, y_, spend_)[1] for m, lb in labs.items()}
+    a = {m: round(roc_auc_score(y_, pm), 3) for m, pm in p.items()}
+    for hyp, m in HYPOTHESES:
+        mean, lo, hi, pv = boot_test(p["k4"], p[m], y_)
+        SIG.append({"Dataset": name.split(" (")[0], "Hypothesis": hyp, "AUC difference": round(mean, 3), "95% CI low": round(lo, 3), "95% CI high": round(hi, 3), "p": pv})
     sup = cross_val_predict(LogisticRegression(max_iter=2000), Xd, y_, cv=StratifiedKFold(5, shuffle=True, random_state=SEED), method="predict_proba")[:, 1]
     return {
         "Dataset": name, "Real data": real, "Cutoff": str(cutoff.date()), "Horizon (days)": horizon_days,
         "Customers": len(f), "One-time (%)": round(100 * (f["Frequency"] == 1).mean(), 1), "Early-stage (%)": round(100 * early_.mean(), 1),
         "Silhouette k=4": round(silhouette_score(Xd[smp], lab4[smp]), 3), "Bootstrap ARI k=4": round(bootstrap_ari(Xd, 4, B=10).mean(), 3),
         "Valid k=4": validity(lab4)[3], "Repurchase (%)": round(100 * y_.mean(), 1),
-        "AUC guest rule": auc((f["Frequency"] > 1).astype(int).values), "AUC quintile RFM": auc(quintile_rfm(f)),
-        "AUC k=2": auc(km_labels(f, 2)), "AUC k=4": auc(lab4), "AUC plain RFM k=4": auc(km_labels(f, 4, RFM3)),
+        "AUC guest rule": a["guest"], "AUC quintile RFM": a["quintile"],
+        "AUC k=2": a["k2"], "AUC k=4": a["k4"], "AUC plain RFM k=4": a["plain"],
         "AUC supervised": round(roc_auc_score(y_, sup), 3),
         "AUC k=4 early-stage": auc(lab4, early_), "AUC k=4 established": auc(lab4, ~early_) if (~early_).sum() > 50 else np.nan,
     }
@@ -1291,15 +1320,25 @@ def history_curve(name, txd, windows=(30, 60, 90, 180), horizon=90):
     cohort = first[first <= end - pd.Timedelta(days=max(windows) + horizon)].index
     tc = txd[txd["CustomerID"].isin(cohort)].merge(first.rename("first_buy"), left_on="CustomerID", right_index=True)
     age = (tc["InvoiceDate"] - tc["first_buy"]).dt.days
-    rows = []
+    rows, oofw, yw = [], {}, {}
     for W in windows:
         win = tc[age < W].copy()
         win["InvoiceDate"] = win["InvoiceDate"] - (win["first_buy"] - pd.Timestamp("2000-01-01"))
         fw = build_features(win, pd.Timestamp("2000-01-01") + pd.Timedelta(days=W)).reindex(cohort)
         out = tc[(age >= W) & (age < W + horizon)].groupby("CustomerID")["Amount"].sum().reindex(cohort).fillna(0)
-        m, _ = evaluate(km_labels(fw, 4), (out > 0).astype(int).values, out.values)
+        yw[W] = (out > 0).astype(int).values
+        m, oofw[W] = evaluate(km_labels(fw, 4), yw[W], out.values)
         rows.append({"Dataset": name, "History (days)": W, "Cohort": len(cohort), "Repurchase next 90 days (%)": round(100 * (out > 0).mean(), 1), "AUC k=4": round(m["auc"], 3)})
+    # Each window has its own outcome period, so the AUCs are bootstrapped jointly (same customers) but scored against their own outcome.
+    rng = np.random.default_rng(SEED)
+    for a_, b_ in [(60, 30), (90, 30), (180, 90)]:
+        d = np.array([roc_auc_score(yw[a_][i], oofw[a_][i]) - roc_auc_score(yw[b_][i], oofw[b_][i]) for i in (rng.integers(0, len(cohort), len(cohort)) for _ in range(1000))])
+        HIST_CI.append({"Dataset": name, "Comparison": f"{a_} vs {b_} days", "AUC gain": round(d.mean(), 3), "95% CI low": round(np.percentile(d, 2.5), 3),
+                        "95% CI high": round(np.percentile(d, 97.5), 3), "p": max(min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean())), 1 / 1000)})
     return rows
+
+
+HIST_CI = []
 
 
 all_rows = [
@@ -1316,11 +1355,26 @@ RESULTS["all_k4_beats_guest"] = int((all_tbl["AUC k=4"] > all_tbl["AUC guest rul
 RESULTS["all_k4_beats_k2"] = int((all_tbl["AUC k=4"] > all_tbl["AUC k=2"]).sum())
 RESULTS["all_early_below_established"] = int((all_tbl["AUC k=4 early-stage"] < all_tbl["AUC k=4 established"]).sum())
 RESULTS["r2_customers"], RESULTS["cd_customers"] = int(r2_tx["CustomerID"].nunique()), int(cd_tx["CustomerID"].nunique())
-all_tbl.T
+
+# Significance of the four hypotheses on all five datasets: 20 paired bootstrap tests, Holm-corrected as one family.
+sig = pd.DataFrame(SIG)
+sig["Holm p"] = holm(sig["p"])
+sig["Significant (Holm 5%)"] = sig["Holm p"] < 0.05
+RESULTS["sig_tests"], RESULTS["sig_holm_count"] = len(sig), int(sig["Significant (Holm 5%)"].sum())
+RESULTS["sig_holm_by_hypothesis"] = sig.groupby("Hypothesis")["Significant (Holm 5%)"].sum().astype(int).to_dict()
+save_table(sig.assign(p=sig["p"].map(lambda v: "<0.001" if v <= 0.001 else f"{v:.3f}"),
+                      **{"Holm p": sig["Holm p"].map(lambda v: "<0.001" if v <= 0.001 else f"{v:.3f}")}), "t_all_significance")
+all_tbl.T, sig
 
 # %%
+history_curve("UCI Online Retail", tx)  # only for its confidence intervals; the UCI curve itself is Part 14d
 hist_rows = history_curve("Online Retail II year 1", r2_tx) + history_curve("CDNOW", cd_tx) + history_curve("Olist", o_tx)
 hist_tbl = save_table(pd.DataFrame(hist_rows), "t_all_history")
+hci = pd.DataFrame(HIST_CI)
+hci["Holm p"] = holm(hci["p"])
+fmt_p = lambda v: "<0.001" if v <= 0.001 else f"{v:.3f}"
+save_table(hci.assign(p=hci["p"].map(fmt_p), **{"Holm p": hci["Holm p"].map(fmt_p)}), "t_history_ci")
+RESULTS["hist_ci"] = hci.drop(columns=["p"]).to_dict("records")
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 short = all_tbl["Dataset"].str.replace(r" \(.*\)", "", regex=True)

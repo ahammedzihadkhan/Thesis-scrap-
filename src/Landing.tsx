@@ -11,7 +11,7 @@ const features = [
   { icon: Wand2, title: 'Automatic data cleaner', text: 'Drop a messy CSV or Excel export. Dates, prices, Bangla digits, phone numbers and duplicates are fixed for you, with a log of every change.' },
   { icon: PhoneCall, title: 'Guest buyers recognised', text: 'Repeat buyers without an account are linked by their delivery phone number, so WhatsApp and Messenger shops get real customer histories.' },
   { icon: BrainCircuit, title: 'Five-feature segmentation', text: 'Recency, Frequency, Monetary value, buying rhythm and basket breadth, clustered with K-Means into Champions, Loyal, At-Risk and Hibernating.' },
-  { icon: Users, title: 'Early-stage customers', text: 'New and low-history buyers are flagged separately, because our research shows their segment is not yet reliable in the first 60–90 days.' },
+  { icon: Users, title: 'Early-stage customers', text: 'New and low-history buyers get their own three groups and a welcome-style message, because our research shows a normal segment is not yet reliable in the first 60–90 days.' },
   { icon: MessageSquareShare, title: 'Send to everyone', text: 'One offer per group in English or Bangla. Go through customers one by one with WhatsApp or Messenger opening ready to send, or send automatically through the official WhatsApp Business API.' },
   { icon: ShieldCheck, title: 'Validated, not guessed', text: 'Live silhouette, Davies–Bouldin, bootstrap stability and a true out-of-sample repurchase test on your own data.' },
 ];

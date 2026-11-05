@@ -6,6 +6,7 @@ import {
   WHATSAPP_BULK_TOOL_SPECS,
 } from './types';
 import { csvSafe } from './dataCleaner';
+import { EARLY_SEGMENT_METAS } from './mlClustering';
 
 /**
  * Standardizes phone numbers to clean international E.164 digits without leading '+'
@@ -108,8 +109,8 @@ export function generateWhatsAppBulkExport(
       ? `${recProfile.primaryRecommendation.discountPct}% Off (${recProfile.primaryRecommendation.recommendationReason})`
       : cfg.discountValue;
 
-    // Build personalized message body with dynamic merge tags
-    const message = cfg.messageTemplate
+    // Build personalized message body with dynamic merge tags; early-stage customers get a lifecycle message (two-track).
+    const message = (c.earlySegment ? EARLY_SEGMENT_METAS[c.earlySegment].message : cfg.messageTemplate)
       .replace(/{name}/g, customerName)
       .replace(/{shop_name}/g, shopName)
       .replace(/{discount_code}/g, cfg.discountCode)

@@ -1,6 +1,6 @@
 import React from 'react';
-import { CustomerRFMTD, PersonaType } from '../rfm/types';
-import { PERSONA_METAS } from '../rfm/mlClustering';
+import { CustomerRFMTD, EarlySegment, PersonaType } from '../rfm/types';
+import { EARLY_SEGMENT_METAS, PERSONA_METAS } from '../rfm/mlClustering';
 import { ArrowRight, Crown, Heart, MessageCircle, Moon, Sparkles, TriangleAlert, Upload, UserPlus, Wand2 } from 'lucide-react';
 
 type Tab = 'home' | 'cleaner' | 2 | 4;
@@ -68,11 +68,12 @@ export const HomeTab: React.FC<Props> = ({ customers, datasetName, validOrders, 
       </section>
 
       <section>
-        <h2 className="text-base font-extrabold text-slate-900 mb-2">Your customer groups</h2>
+        <h2 className="text-base font-extrabold text-slate-900">Your customer groups</h2>
+        <p className="text-sm text-slate-600 mb-2">Customers with enough history ({(customers.length - early).toLocaleString()}). New customers are shown separately below.</p>
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {GROUPS.map((g) => {
             const meta = PERSONA_METAS[g.persona];
-            const count = customers.filter((c) => c.persona === g.persona).length;
+            const count = customers.filter((c) => c.persona === g.persona && !c.earlySegment).length;
             return (
               <article key={g.persona} className="bg-white rounded-2xl border p-4 shadow-xs flex flex-col" style={{ borderTop: `4px solid ${meta.color}` }}>
                 <div className="flex items-center gap-2" style={{ color: meta.color }}>
@@ -95,18 +96,34 @@ export const HomeTab: React.FC<Props> = ({ customers, datasetName, validOrders, 
         </div>
       </section>
 
-      <section className="bg-sky-50 border border-sky-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-        <UserPlus className="w-6 h-6 text-sky-700 shrink-0" />
-        <div className="flex-1">
-          <h3 className="font-extrabold text-sky-950">{early.toLocaleString()} new customers <span className="font-normal text-sm text-sky-800">(নতুন কাস্টমার)</span></h3>
-          <p className="text-sm text-sky-900">
-            First order in the last 90 days, or only 1–2 orders. It is too early to judge them — our research found their group is not reliable yet.
-            Send them a welcome and a second-order reminder instead.
-          </p>
+      <section className="bg-sky-50 border border-sky-200 rounded-2xl p-4">
+        <h2 className="font-extrabold text-sky-950 flex items-center gap-2">
+          <UserPlus className="w-5 h-5 text-sky-700" /> {early.toLocaleString()} new customers <span className="font-normal text-sm text-sky-800">(নতুন কাস্টমার)</span>
+        </h2>
+        <p className="text-sm text-sky-900 mt-1">
+          First order in the last 90 days, or only 1–2 orders. Our research found it is too early to judge them, so they get a welcome-style message instead of an offer.
+        </p>
+        <div className="mt-3 grid sm:grid-cols-3 gap-3">
+          {(Object.keys(EARLY_SEGMENT_METAS) as EarlySegment[]).map((s) => {
+            const m = EARLY_SEGMENT_METAS[s];
+            const count = customers.filter((c) => c.earlySegment === s).length;
+            return (
+              <article key={s} className="bg-white rounded-xl border p-3 flex flex-col" style={{ borderTop: `4px solid ${m.color}` }}>
+                <h3 className="font-extrabold text-slate-900">{m.name}</h3>
+                <p className="text-xs text-slate-500">{m.bn}</p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-slate-900">{count.toLocaleString()}</span>
+                  <span className="text-xs text-slate-500">customers · {Math.round((100 * count) / total)}%</span>
+                </div>
+                <p className="text-sm text-slate-600 mt-1">{m.meaning}</p>
+                <p className="text-sm text-slate-800 mt-2 bg-slate-50 rounded-lg p-2"><strong>What to do:</strong> {m.action}</p>
+                <button onClick={() => onNavigate(4)} className="mt-auto pt-3 text-sm font-bold inline-flex items-center gap-1 cursor-pointer" style={{ color: m.color }}>
+                  <MessageCircle className="w-4 h-4" /> Prepare messages <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </article>
+            );
+          })}
         </div>
-        <button onClick={() => onNavigate(2)} className="text-sm font-bold text-sky-800 hover:text-sky-950 inline-flex items-center gap-1 cursor-pointer shrink-0">
-          See all customers <ArrowRight className="w-3.5 h-3.5" />
-        </button>
       </section>
     </div>
   );

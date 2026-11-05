@@ -28,6 +28,7 @@ import {
   calculateClusteringMetrics,
   calculateHopkins,
   rankClustersToPersonas,
+  assignEarlySegments,
   runAlgorithmBenchmark,
   runTemporalHoldoutCheck,
   bootstrapStabilityARI,
@@ -148,12 +149,10 @@ export default function App() {
     wcssHistory,
   } = useMemo(() => {
     const kmResult = runKMeans(featuresStandardized, k, 10, 80);
-    const { customerListWithPersonas, centroids } = rankClustersToPersonas(
-      customerRFMList,
-      kmResult.labels,
-      k,
-      kmResult.centroids
-    );
+    const ranked = rankClustersToPersonas(customerRFMList, kmResult.labels, k, kmResult.centroids);
+    const centroids = ranked.centroids;
+    // Two-track: early-stage customers additionally get their own three lifecycle segments.
+    const customerListWithPersonas = assignEarlySegments(ranked.customerListWithPersonas);
 
     const metrics = calculateClusteringMetrics(
       featuresStandardized,

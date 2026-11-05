@@ -116,11 +116,15 @@ export interface CustomerRFMTD {
   tenureDays?: number; // Days from first purchase to the reference date
   /** Early-Stage = first order within the last 90 days OR at most 2 orders (thesis Section 4.7). */
   lifecycleStage?: 'Early-Stage' | 'Established';
+  /** Early-stage track (thesis two-track segmentation): set only for Early-Stage customers. */
+  earlySegment?: EarlySegment;
   cluster?: number;
   persona?: PersonaType;
   pc1?: number;
   pc2?: number;
 }
+
+export type EarlySegment = 'Promising Newcomers' | 'Developing Newcomers' | 'One-and-Done Risk';
 
 export type PersonaType =
   | 'Champions (VIP Loyalists)'

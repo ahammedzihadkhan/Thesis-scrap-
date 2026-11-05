@@ -10,7 +10,6 @@ This repository holds three things:
 | Folder | What it is |
 |---|---|
 | [`thesis/notebook/`](thesis/notebook/) | The Jupyter notebook that reproduces **every number, table and figure** in the thesis |
-| [`thesis/paper/`](thesis/paper/) | The thesis in LaTeX (`thesis.tex`) and the compiled PDF |
 | [`src/`](src/) | **KroyPulse**, the open-source web app that applies the method to any shop's order file — locally |
 
 ---
@@ -51,7 +50,7 @@ Or by hand:
 ```bash
 npm install
 npm start          # builds and opens http://127.0.0.1:4173
-npm test           # 27 unit tests (engine, data cleaner, local login, WhatsApp API)
+npm test           # 28 unit tests (engine, two-track segments, data cleaner, local login, WhatsApp API)
 ```
 
 On first start you create the **owner account** (stored only on that computer). Staff accounts can be added from the bar at the top.
@@ -60,7 +59,7 @@ On first start you create the **owner account** (stored only on that computer). 
 
 - **Automatic Data Cleaner** — open any CSV / Excel export; dates (including Excel serial dates and day/month detection), prices (৳, Tk, commas), Bangla digits, phone numbers (+880 / missing leading 0), e-mails, IDs, blank markers, empty rows/columns and duplicates are fixed, with a log of every rule. Export as CSV or Excel. Every upload is cleaned automatically.
 - **Guest identity stitching** — repeat buyers without an account are linked by phone number.
-- **Extended RFM segmentation** — R, F, M, inter-purchase time and basket depth; K-Means with k-means++; Champions / Loyal / At-Risk / Hibernating; **Early-Stage** flag for new or low-history customers.
+- **Extended RFM segmentation** — R, F, M, inter-purchase time and basket depth; K-Means with k-means++; Champions / Loyal / At-Risk / Hibernating; **two-track**: new or low-history (Early-Stage) customers get their own three segments (Promising newcomers, Just joined, Bought once) and lifecycle messages instead of segment offers.
 - **Validation computed live** — silhouette, Davies–Bouldin, Calinski–Harabasz, Hopkins, bootstrap stability, and a true temporal holdout. The five non-K-Means benchmark rows are labelled as thesis reference values.
 - **Send to everyone** — one offer per group in English or Bangla. Free one-by-one mode opens WhatsApp or Messenger with each message ready; optional automatic mode sends Meta-approved templates to opted-in customers through the official WhatsApp Business Cloud API (no unofficial WhatsApp automation, which gets numbers banned).
 
