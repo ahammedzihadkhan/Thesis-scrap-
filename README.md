@@ -22,7 +22,7 @@ cd thesis/notebook
 python build_notebook.py                 # builds and runs Extended_RFM_Thesis.ipynb (~30 min)
 ```
 
-Or run it in Google Colab without installing anything: [open the notebook in Colab](https://colab.research.google.com/github/ahammedzihadkhan/Thesis-scrap-/blob/main/thesis/notebook/Extended_RFM_Thesis.ipynb), then **Runtime → Run all**. The first cell fetches the project and the datasets download automatically.
+Or run it in Google Colab without installing anything: [open the notebook in Colab](https://colab.research.google.com/github/ahammedzihadkhan/Thesis-scrap-/blob/main/thesis/notebook/Extended_RFM_Thesis.ipynb), then **Runtime → Run all**. The first cell fetches the project and the datasets download automatically, except CDNOW, whose site refuses automated downloads: download `CDNOW_master.zip` in your browser from [brucehardie.com/datasets](https://www.brucehardie.com/datasets/) and upload it to `/content/kroypulse/thesis/data/cdnow/` (in Colab: Files panel) before running Part 17.
 
 The UCI Online Retail file is downloaded automatically the first time (or place `online_retail.csv` in `thesis/data/`).
 Outputs go to `thesis/outputs/figures`, `thesis/outputs/tables` (CSV + LaTeX) and `thesis/outputs/results.json`.

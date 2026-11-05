@@ -1248,7 +1248,12 @@ CD = DATA / "cdnow"
 if not (CD / "CDNOW_master.txt").exists():
     import urllib.request, zipfile
     CD.mkdir(exist_ok=True)
-    urllib.request.urlretrieve("https://www.brucehardie.com/datasets/CDNOW_master.zip", CD / "CDNOW_master.zip")
+    try:
+        if not (CD / "CDNOW_master.zip").exists():
+            urllib.request.urlretrieve("https://www.brucehardie.com/datasets/CDNOW_master.zip", CD / "CDNOW_master.zip")
+    except Exception as e:  # the CDNOW site refuses some automated downloads
+        raise RuntimeError(f"Could not download CDNOW ({e}). Download CDNOW_master.zip in your browser from "
+                           f"https://www.brucehardie.com/datasets/ and put it (or CDNOW_master.txt) in {CD}, then run again.") from e
     zipfile.ZipFile(CD / "CDNOW_master.zip").extract("CDNOW_master.txt", CD)
 cd_raw = pd.read_csv(CD / "CDNOW_master.txt", sep=r"\s+", header=None, names=["CustomerID", "Date", "CDs", "Amount"], dtype={"CustomerID": str, "Date": str})
 cd_raw = cd_raw[cd_raw["Amount"] > 0].reset_index(drop=True)
