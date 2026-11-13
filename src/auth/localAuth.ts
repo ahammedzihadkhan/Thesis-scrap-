@@ -3,7 +3,8 @@
  * passwords are stored only as salted PBKDF2-SHA-256 hashes (Web Crypto), and the session lives in
  * sessionStorage, so it ends when the tab is closed.
  *
- * Threat model: stops another person on a shared computer from opening the shop's customer data.
+ * Threat model: stops another person on a shared computer from opening the shop's customer data,
+ * once the owner has removed the ready-made test account (its password is printed on the sign-in page).
  * It does not protect against someone with full control of the device (no local app can).
  */
 
@@ -13,6 +14,7 @@ export interface StoredUser {
   hash: string; // base64
   iterations: number;
   createdAt: string;
+  test?: boolean; // the ready-made test account
 }
 
 export interface Session {
@@ -25,6 +27,10 @@ type KV = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 const USERS_KEY = 'kroypulse.users.v1';
 const SESSION_KEY = 'kroypulse.session.v1';
 const LOCK_KEY = 'kroypulse.lock.v1';
+const TEST_REMOVED_KEY = 'kroypulse.testAccountRemoved.v1';
+
+/** Ready-made account for trying the app; shown on the sign-in page. */
+export const TEST_ACCOUNT = { username: 'test', password: 'test1234' } as const;
 export const ITERATIONS = 600_000; // OWASP 2023 recommendation for PBKDF2-HMAC-SHA256
 export const SESSION_MS = 8 * 60 * 60 * 1000;
 export const MAX_ATTEMPTS = 5;
@@ -55,11 +61,9 @@ export function normaliseUsername(u: string): string {
 }
 
 /** Returns an error message, or null when the password is acceptable. */
-export function passwordProblem(pw: string, username = ''): string | null {
-  if (pw.length < 8) return 'Use at least 8 characters.';
-  if (!/[a-zA-Z]/.test(pw) || !/\d/.test(pw)) return 'Use both letters and numbers.';
-  if (username && pw.toLowerCase().includes(normaliseUsername(username))) return 'The password must not contain the username.';
-  return null;
+export function passwordProblem(pw: string): string | null {
+  // Length only, by the owner's choice: the login guards an open tab on the shop's own computer, and no customer data is stored.
+  return pw.length < 4 ? 'Use at least 4 characters.' : null;
 }
 
 export function listUsers(store: KV = defaultLocal()): StoredUser[] {
@@ -71,21 +75,45 @@ export function listUsers(store: KV = defaultLocal()): StoredUser[] {
   }
 }
 
-export function hasAnyUser(store: KV = defaultLocal()): boolean {
-  return listUsers(store).length > 0;
+/** True once a real (non-test) account exists. Until then anyone may create the owner account. */
+export function hasOwner(store: KV = defaultLocal()): boolean {
+  return listUsers(store).some((u) => !u.test);
+}
+
+export function hasTestAccount(store: KV = defaultLocal()): boolean {
+  return listUsers(store).some((u) => u.test);
+}
+
+/** Adds the test account, unless the owner removed it or an account already uses its name. */
+export async function ensureTestAccount(store: KV = defaultLocal()): Promise<void> {
+  const skip = () => Boolean(store.getItem(TEST_REMOVED_KEY)) || listUsers(store).some((u) => u.username === TEST_ACCOUNT.username);
+  if (skip()) return;
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derive(TEST_ACCOUNT.password, salt, ITERATIONS);
+  if (skip()) return; // a parallel call finished first
+  const user: StoredUser = { username: TEST_ACCOUNT.username, salt: toB64(salt), hash: toB64(hash), iterations: ITERATIONS, createdAt: new Date().toISOString(), test: true };
+  store.setItem(USERS_KEY, JSON.stringify([...listUsers(store), user]));
+}
+
+/** Deletes the test account for good: it is not created again on this computer. */
+export function removeTestAccount(store: KV = defaultLocal()): void {
+  store.setItem(USERS_KEY, JSON.stringify(listUsers(store).filter((u) => !u.test)));
+  store.setItem(TEST_REMOVED_KEY, '1');
 }
 
 /**
- * Create an account. The first account can be created by anyone (first run on this device);
- * after that only a signed-in user can add staff accounts.
+ * Create an account. While no real account exists, anyone can create one (the owner, on first use);
+ * after that only a signed-in owner or staff member can add accounts, never the test account.
  */
 export async function register(username: string, password: string, store: KV = defaultLocal(), sessionStore: KV = defaultSession()): Promise<void> {
   const name = normaliseUsername(username);
-  if (!/^[a-z0-9._-]{3,32}$/.test(name)) throw new Error('Username: 3–32 letters, numbers, dot, dash or underscore.');
-  const problem = passwordProblem(password, name);
+  if (!name || name.length > 40) throw new Error('Enter a username of up to 40 characters.');
+  const problem = passwordProblem(password);
   if (problem) throw new Error(problem);
   const users = listUsers(store);
-  if (users.length > 0 && !currentSession(sessionStore)) throw new Error('Only a signed-in user can add another account.');
+  const real = users.filter((u) => !u.test);
+  const me = currentSession(sessionStore)?.username;
+  if (real.length > 0 && !real.some((u) => u.username === me)) throw new Error('Only a signed-in owner or staff member can add accounts (the test account cannot).');
   if (users.some((u) => u.username === name)) throw new Error('That username already exists.');
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const hash = await derive(password, salt, ITERATIONS);

@@ -43,8 +43,8 @@ export function calculateCampaignForecast(
   const audienceSize = filtered.length;
   const phoneReadyCount = filtered.filter((c) => Boolean(formatE164Phone(c.phone))).length;
 
-  // Use phone-ready count for realistic messaging reach, fallback to audience size if 0
-  const effectiveReach = phoneReadyCount > 0 ? phoneReadyCount : audienceSize;
+  // Only customers with a WhatsApp number or a Messenger ID can receive the campaign.
+  const effectiveReach = filtered.filter((c) => formatE164Phone(c.phone) || c.messengerId).length;
 
   const convRateDecimal = Math.max(0, Math.min(100, conversionRatePct)) / 100;
   const projectedOrders = Math.round(effectiveReach * convRateDecimal);
@@ -98,8 +98,7 @@ export function generateAllSegmentScenarios(
     const historicalAOV = totalOrders > 0 ? Math.round(totalSpend / totalOrders) : 2500;
 
     const defaultConversionPct = personaDefaults[persona];
-    const phoneReady = segmentCusts.filter((c) => Boolean(formatE164Phone(c.phone))).length;
-    const reach = phoneReady > 0 ? phoneReady : audienceSize;
+    const reach = segmentCusts.filter((c) => formatE164Phone(c.phone) || c.messengerId).length;
     const projectedOrders = Math.round(reach * (defaultConversionPct / 100));
     const projectedRevenue = projectedOrders * historicalAOV;
 

@@ -1,0 +1,8 @@
+# Netlify headers; keep in sync with SECURITY_HEADERS in vite.config.ts (the CSP is a meta tag in index.html).
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

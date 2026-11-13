@@ -27,7 +27,7 @@ import {
   runKMeans,
   calculateClusteringMetrics,
   calculateHopkins,
-  rankClustersToPersonas,
+  segmentEstablished,
   assignEarlySegments,
   runAlgorithmBenchmark,
   runTemporalHoldoutCheck,
@@ -61,7 +61,9 @@ import { Tab5POSPredictor } from './components/Tab5POSPredictor';
 import { WhatsAppShopSection } from './components/WhatsAppShopSection';
 import { DataCleanerTab } from './components/DataCleanerTab';
 import { HomeTab } from './components/HomeTab';
-import { autoCleanDataset } from './rfm/dataCleaner';
+import { TabPredictions } from './components/TabPredictions';
+import { autoCleanDataset, CleaningReport } from './rfm/dataCleaner';
+import { buildShopCatalog } from './rfm/recommendationEngine';
 
 import {
   LayoutDashboard,
@@ -77,13 +79,18 @@ import {
   Upload,
   Wand2,
   Home,
+  LineChart,
 } from 'lucide-react';
 
 export default function App() {
   // Global settings & currency
   const [currency, setCurrency] = useState<CurrencyCode>('BDT');
-  const [activeTab, setActiveTab] = useState<'home' | 'whatsapp_shop' | 'cleaner' | 1 | 2 | 3 | 4 | 5>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'whatsapp_shop' | 'cleaner' | 'predict' | 1 | 2 | 3 | 4 | 5>('home');
+  // the tab bar stays pinned while scrolling, so a new screen should start at its top
+  useEffect(() => { window.scrollTo({ top: 0 }); }, [activeTab]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // what the automatic cleaning changed in the last upload, shown on the Clean data screen
+  const [uploadReport, setUploadReport] = useState<{ label: string; report: CleaningReport } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string>(() => new Date().toLocaleTimeString());
@@ -128,7 +135,7 @@ export default function App() {
   }, [cleanedRows]);
 
   // Step 3: Preprocessing (Log1p & StandardScaler)
-  const { featuresStandardized, scaler, stats: preprocessingStats } = useMemo(() => {
+  const { featuresStandardized, stats: preprocessingStats } = useMemo(() => {
     return preprocessRFM(customerRFMList);
   }, [customerRFMList]);
 
@@ -142,32 +149,27 @@ export default function App() {
     customerListWithPersonas,
     centroids,
     rawCentroidsStandardized,
-    wcss,
+    modelScaler,
+    fittedOn,
     healthMetrics,
     benchmarkResults,
     holdoutResult,
     wcssHistory,
   } = useMemo(() => {
-    const kmResult = runKMeans(featuresStandardized, k, 10, 80);
-    const ranked = rankClustersToPersonas(customerRFMList, kmResult.labels, k, kmResult.centroids);
-    const centroids = ranked.centroids;
-    // Two-track: early-stage customers additionally get their own three lifecycle segments.
-    const customerListWithPersonas = assignEarlySegments(ranked.customerListWithPersonas);
+    // Two-track (thesis): the four groups are fitted on established customers; early-stage customers get their own segments.
+    const model = segmentEstablished(customerRFMList, k);
+    const { features, km, centroids } = model;
+    const customerListWithPersonas = assignEarlySegments(model.customers);
 
-    const metrics = calculateClusteringMetrics(
-      featuresStandardized,
-      kmResult.labels,
-      k,
-      kmResult.centroids
-    );
-    const hopkins = calculateHopkins(featuresStandardized, 40);
+    const metrics = calculateClusteringMetrics(features, km.labels, k, km.centroids);
+    const hopkins = calculateHopkins(features, 40);
 
     const fullHealth: ModelHealthMetrics = {
       silhouetteScore: metrics.silhouetteScore,
       daviesBouldinIndex: metrics.daviesBouldinIndex,
       calinskiHarabaszIndex: metrics.calinskiHarabaszIndex,
       hopkinsStatistic: hopkins,
-      bootstrapStabilityARI: bootstrapStabilityARI(featuresStandardized, k, kmResult.labels),
+      bootstrapStabilityARI: bootstrapStabilityARI(features, k, km.labels),
     };
 
     const benchmark = runAlgorithmBenchmark(
@@ -182,8 +184,8 @@ export default function App() {
     // Calculate optimization curves across k=2 to 8
     const history: { k: number; wcss: number; silhouette: number; db: number }[] = [];
     for (let testK = 2; testK <= 8; testK++) {
-      const res = runKMeans(featuresStandardized, testK, 3, 30);
-      const m = calculateClusteringMetrics(featuresStandardized, res.labels, testK, res.centroids);
+      const res = runKMeans(features, testK, 3, 30);
+      const m = calculateClusteringMetrics(features, res.labels, testK, res.centroids);
       history.push({
         k: testK,
         wcss: res.wcss,
@@ -195,14 +197,20 @@ export default function App() {
     return {
       customerListWithPersonas,
       centroids,
-      rawCentroidsStandardized: kmResult.centroids,
-      wcss: kmResult.wcss,
+      rawCentroidsStandardized: km.centroids,
+      modelScaler: model.scaler,
+      fittedOn: features.length,
       healthMetrics: fullHealth,
       benchmarkResults: benchmark,
       holdoutResult: holdout,
       wcssHistory: history,
     };
-  }, [featuresStandardized, customerRFMList, k, cleanedRows]);
+  }, [customerRFMList, k, cleanedRows]);
+
+  // Suggestions name the shop's own best sellers, not demo products.
+  const shopCatalog = useMemo(() => buildShopCatalog(cleanedRows), [cleanedRows]);
+  // per customer, so a file without order numbers (date picked as the order column) counts customer-days, not dates
+  const uniqueOrders = useMemo(() => new Set(cleanedRows.map((r) => `${r.unifiedKey}|${r.orderId}`)).size, [cleanedRows]);
 
   // Ingestion Handlers (100% Two-Way Synchronized between 5D RFM Engine & F-Commerce Hub)
   const handleLoadRichBDSample = useCallback(() => {
@@ -292,7 +300,8 @@ export default function App() {
 
   const handleCustomDataLoaded = useCallback((uploaded: RawTransaction[], fileName: string) => {
     // Every upload is auto-cleaned first (formats dates, prices, phones; drops empty / duplicate rows).
-    const data = autoCleanDataset(uploaded).rows;
+    const cleaned = autoCleanDataset(uploaded);
+    const data = cleaned.rows;
     if (data.length === 0) return;
     setIsLoading(true);
     setProcessingMessage(`Processing uploaded file "${fileName}" (${data.length.toLocaleString()} rows) in real-time...`);
@@ -300,8 +309,9 @@ export default function App() {
       const keys = Object.keys(data[0]);
       const detectedMapping = autoDetectColumnMapping(keys);
       const converted = convertRawRowsToWhatsAppShopOrders(data);
-      const label = `Uploaded File: ${fileName} (${converted.length.toLocaleString()} Orders · BDT ৳)`;
+      const label = `Uploaded File: ${fileName} (${data.length.toLocaleString()} rows)`;
       setRawRows(data);
+      setUploadReport({ label, report: cleaned.report });
       setHeaders(keys);
       setMapping(detectedMapping);
       setDatasetName(label);
@@ -313,7 +323,9 @@ export default function App() {
       setProcessingMessage(null);
 
       // Verify if required fields were resolved
+      // without a customer column every row is dropped, so ask instead of showing 0 customers
       const hasRequired = Boolean(
+        (detectedMapping.customerCol || detectedMapping.phoneCol || detectedMapping.emailCol || detectedMapping.messengerCol) &&
         detectedMapping.orderIdCol &&
         detectedMapping.timestampCol &&
         (
@@ -354,7 +366,7 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-slate-100/70 text-slate-900 flex flex-col font-sans relative">
+    <div className="min-h-screen w-full overflow-x-clip bg-slate-100/70 text-slate-900 flex flex-col font-sans relative">
       {/* Real-Time Processing Overlay Banner when switching or uploading datasets */}
       {isLoading && (
         <div className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-xs flex items-center justify-center p-4">
@@ -409,18 +421,19 @@ export default function App() {
       {/* Main Tabbed Interface */}
       <main className="w-full max-w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 flex-1 space-y-4">
         {/* Navigation: four plain-language steps; expert screens behind "Advanced" */}
-        <nav aria-label="Main" className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 pb-2">
+        <nav aria-label="Main" className="sticky top-0 z-30 -mx-3 sm:-mx-5 lg:-mx-6 px-3 sm:px-5 lg:px-6 py-2 bg-white/90 backdrop-blur-sm border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
           {([
             ['home', 'Home', Home],
             ['cleaner', 'Clean data', Wand2],
             [2, 'Customer groups', Box],
             [4, 'Send messages', MessageSquareShare],
+            ['predict', 'Who buys next', LineChart],
           ] as const).map(([tab, label, Icon]) => (
             <button
               key={String(tab)}
               onClick={() => setActiveTab(tab)}
               aria-current={activeTab === tab ? 'page' : undefined}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold cursor-pointer transition-colors ${
+              className={`shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold cursor-pointer transition-colors ${
                 activeTab === tab ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
@@ -431,43 +444,44 @@ export default function App() {
           <button
             onClick={() => setShowAdvanced((v) => !v)}
             aria-expanded={showAdvanced}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer"
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer"
           >
             <BrainCircuit className="w-4 h-4" /> {showAdvanced ? 'Hide advanced tools' : 'Advanced tools'}
           </button>
-          {showAdvanced && (
-            <div className="w-full flex flex-wrap gap-1.5 pt-1">
-              {([
-                [1, 'Store overview', LayoutDashboard],
-                [3, `Model check (k=${k} · ${healthMetrics.silhouetteScore.toFixed(2)})`, BrainCircuit],
-                [5, 'Customer lookup', Calculator],
-                ['whatsapp_shop', 'Shop ledger & WhatsApp', ShoppingBag],
-              ] as const).map(([tab, label, Icon]) => (
-                <button
-                  key={String(tab)}
-                  onClick={() => setActiveTab(tab)}
-                  aria-current={activeTab === tab ? 'page' : undefined}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border ${
-                    activeTab === tab ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" /> {label}
-                </button>
-              ))}
-            </div>
-          )}
         </nav>
+        {showAdvanced && (
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              [1, 'Store overview', LayoutDashboard],
+              [3, `Model check (k=${k} · ${healthMetrics.silhouetteScore.toFixed(2)})`, BrainCircuit],
+              [5, 'Customer lookup', Calculator],
+              ['whatsapp_shop', 'Shop ledger & WhatsApp', ShoppingBag],
+            ] as const).map(([tab, label, Icon]) => (
+              <button
+                key={String(tab)}
+                onClick={() => setActiveTab(tab)}
+                aria-current={activeTab === tab ? 'page' : undefined}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border ${
+                  activeTab === tab ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {activeTab === 'home' && (
           <HomeTab
             customers={customerListWithPersonas}
             datasetName={datasetName}
-            validOrders={hygieneStats.validIdentifiedRows}
+            validOrders={uniqueOrders}
             revenue={totalValidatedRevenue}
             currencySymbol={currencySymbol}
             onUpload={() => setIsUploadOpen(true)}
             onLoadSample={handleLoadRichBDSample}
             onNavigate={setActiveTab}
+            holdout={holdoutResult}
           />
         )}
 
@@ -476,6 +490,7 @@ export default function App() {
           <WhatsAppShopSection
             onSyncWithRFMEngine={handleSyncFromWhatsAppShop}
             currencySymbol={currencySymbol}
+            catalog={shopCatalog}
             initialOrders={shopOrders}
             initialDatasetLabel={shopDatasetLabel}
           />
@@ -485,6 +500,7 @@ export default function App() {
           <DataCleanerTab
             currentRows={rawRows}
             currentName={datasetName}
+            currentReport={uploadReport?.label === datasetName ? uploadReport.report : undefined}
             onUseCleaned={(rows, label) => { handleSyncFromWhatsAppShop(rows, label); setActiveTab(2); }}
           />
         )}
@@ -521,6 +537,7 @@ export default function App() {
             preprocessingStats={preprocessingStats}
             wcssHistory={wcssHistory}
             currencySymbol={currencySymbol}
+            fittedOn={fittedOn}
           />
         )}
 
@@ -530,18 +547,25 @@ export default function App() {
             customers={customerListWithPersonas}
             currencySymbol={currencySymbol}
             cleanedRows={cleanedRows}
+            catalog={shopCatalog}
           />
+        )}
+
+        {/* Who will buy next: BG/NBD + Gamma-Gamma predictions, tested on the shop's own orders */}
+        {activeTab === 'predict' && (
+          <TabPredictions customers={customerListWithPersonas} cleanedRows={cleanedRows} currencySymbol={currencySymbol} />
         )}
 
         {/* Tab 5: Live POS / Single-Customer Segment Predictor */}
         {activeTab === 5 && (
           <Tab5POSPredictor
             customers={customerListWithPersonas}
-            scaler={scaler}
+            scaler={modelScaler}
             centroids={centroids}
             rawCentroidsStandardized={rawCentroidsStandardized}
             currencySymbol={currencySymbol}
             cleanedRows={cleanedRows}
+            catalog={shopCatalog}
           />
         )}
       </main>

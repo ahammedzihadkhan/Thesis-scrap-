@@ -9,7 +9,7 @@ import {
   CleanedTransaction,
   EarlySegment,
 } from './types';
-import { calculate5DRFM, preprocessRFM } from './rfmCalculator';
+import { calculate5DRFM, preprocessRFM, transformSingle } from './rfmCalculator';
 
 /** Early-stage track: lifecycle messages instead of value-based offers (thesis Section "Marketing Queue"). */
 export const EARLY_SEGMENT_METAS: Record<EarlySegment, { name: string; bn: string; color: string; meaning: string; action: string; message: string }> = {
@@ -35,8 +35,8 @@ export const EARLY_SEGMENT_METAS: Record<EarlySegment, { name: string; bn: strin
 
 /**
  * Two-track segmentation (thesis Part 4b): Early-Stage customers get their own K-Means (k=3) on
- * log1p + z-scored Recency, Frequency, Monetary, Basket depth and Tenure. Names: the cluster with the
- * highest mean spend is Promising; of the other two, the one with the more recent first order is Developing.
+ * log1p + z-scored Recency, Frequency, Monetary, Basket depth and Tenure. Names: the cluster with the most orders
+ * per customer is Promising (spend breaks ties); of the other two, the one with the more recent first order is Developing.
  */
 export function assignEarlySegments(customers: CustomerRFMTD[]): CustomerRFMTD[] {
   const idx = customers.flatMap((c, i) => (c.lifecycleStage === 'Early-Stage' ? [i] : []));
@@ -56,16 +56,45 @@ export function assignEarlySegments(customers: CustomerRFMTD[]): CustomerRFMTD[]
     const mean = raw[0].map((_, d) => raw.reduce((s, r) => s + r[d], 0) / raw.length);
     const std = mean.map((m, d) => Math.sqrt(raw.reduce((s, r) => s + (r[d] - m) ** 2, 0) / raw.length) || 1);
     const { labels } = runKMeans(raw.map((r) => r.map((v, d) => (v - mean[d]) / std[d])), 3, 10, 80);
-    const avg = (c: number, key: 'monetary' | 'tenureDays') => {
+    const avg = (c: number, key: 'frequency' | 'monetary' | 'tenureDays') => {
       const m = idx.filter((_, j) => labels[j] === c);
       return m.length ? m.reduce((s, i) => s + (customers[i][key] ?? 0), 0) / m.length : -Infinity;
     };
-    const promising = [0, 1, 2].reduce((a, b) => (avg(b, 'monetary') > avg(a, 'monetary') ? b : a));
+    // "Promising" means the customers already ordered again, so rank by order count first and spend only to break ties;
+    // ranking by spend alone mislabels a single big one-order buyer in small shops.
+    const promising = [0, 1, 2].reduce((a, b) =>
+      avg(b, 'frequency') > avg(a, 'frequency') || (avg(b, 'frequency') === avg(a, 'frequency') && avg(b, 'monetary') > avg(a, 'monetary')) ? b : a);
     const [developing, oneAndDone] = [0, 1, 2].filter((c) => c !== promising).sort((a, b) => avg(a, 'tenureDays') - avg(b, 'tenureDays'));
     const name: Record<number, EarlySegment> = { [promising]: 'Promising Newcomers', [developing]: 'Developing Newcomers', [oneAndDone]: 'One-and-Done Risk' };
     idx.forEach((i, j) => seg.set(i, name[labels[j]]));
   }
   return customers.map((c, i) => (seg.has(i) ? { ...c, earlySegment: seg.get(i) } : c));
+}
+
+/**
+ * Established track (thesis two-track): K-Means is fitted on Established customers only, so early-stage
+ * buyers (mostly one order) cannot take whole clusters and leave the established groups nearly empty.
+ * Every other customer gets the nearest established centroid. Centroid statistics describe the fitted customers.
+ */
+export function segmentEstablished(customers: CustomerRFMTD[], k: number, nInit = 10, maxIter = 80) {
+  const established = customers.filter((c) => c.lifecycleStage === 'Established');
+  // shortcut: a brand-new shop with fewer than 3k established customers is fitted on everyone.
+  const fitSet = established.length >= 3 * k ? established : customers;
+  const { featuresStandardized: features, scaler } = preprocessRFM(fitSet);
+  const km = runKMeans(features, k, nInit, maxIter);
+  const { centroids } = rankClustersToPersonas(fitSet, km.labels, k, km.centroids);
+  const personaOf = new Map(centroids.map((c) => [c.clusterIndex, c.persona]));
+  const fitIndex = new Map(fitSet.map((c, i) => [c, i]));
+  const nearest = (x: number[]) =>
+    km.centroids.reduce((best, cen, j) => (euclideanDistance(x, cen) < euclideanDistance(x, km.centroids[best]) ? j : best), 0);
+  const labelled = customers.map((c) => {
+    const i = fitIndex.get(c);
+    const cluster = i !== undefined
+      ? km.labels[i]
+      : nearest(transformSingle(c.recency, c.frequency, c.monetary, c.interPurchaseTime, c.basketDepth, scaler));
+    return { ...c, cluster, persona: personaOf.get(cluster) };
+  });
+  return { customers: labelled, centroids, features, scaler, km };
 }
 
 export const PERSONA_METAS: Record<PersonaType, PersonaMeta> = {
@@ -655,9 +684,10 @@ export function runTemporalHoldoutCheck(
   const { customerRFMList } = calculate5DRFM(train);
   if (customerRFMList.length <= k) return empty;
 
-  const { featuresStandardized } = preprocessRFM(customerRFMList);
-  const km = runKMeans(featuresStandardized, k, 5, 60);
-  const { customerListWithPersonas } = rankClustersToPersonas(customerRFMList, km.labels, k, km.centroids);
+  // Same established track as the live model; the test is reported for the customers the model was fitted on.
+  const labelled = segmentEstablished(customerRFMList, k, 5, 60).customers;
+  const established = labelled.filter((c) => c.lifecycleStage === 'Established');
+  const customerListWithPersonas = established.length >= 3 * k ? established : labelled;
 
   const holdoutSpendByCustomer = new Map<string, number>();
   let totalHoldoutRevenue = 0;

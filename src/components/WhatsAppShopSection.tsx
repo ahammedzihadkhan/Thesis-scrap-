@@ -20,6 +20,7 @@ import {
   BANGLADESHI_CATALOG,
   CustomerRecommendationProfile,
   ProductRecommendation,
+  ProductCatalogItem,
 } from '../rfm/recommendationEngine';
 import {
   Download,
@@ -59,6 +60,7 @@ import {
 interface WhatsAppShopSectionProps {
   onSyncWithRFMEngine: (rawRows: RawTransaction[], datasetLabel: string) => void;
   currencySymbol?: string;
+  catalog?: ProductCatalogItem[];
   initialOrders?: WhatsAppShopOrder[];
   initialDatasetLabel?: string;
 }
@@ -82,6 +84,7 @@ function getEffectiveChannel(o: WhatsAppShopOrder): 'whatsapp' | 'sms' | 'email'
 export const WhatsAppShopSection: React.FC<WhatsAppShopSectionProps> = ({
   onSyncWithRFMEngine,
   currencySymbol = '৳',
+  catalog = BANGLADESHI_CATALOG,
   initialOrders,
   initialDatasetLabel,
 }) => {
@@ -227,14 +230,14 @@ export const WhatsAppShopSection: React.FC<WhatsAppShopSectionProps> = ({
       const profile = generateCustomerRecommendation(
         mockRFM,
         pastItems,
-        BANGLADESHI_CATALOG,
+        catalog,
         currencySymbol
       );
       entry.profile = profile;
     });
 
     return map;
-  }, [orders, currencySymbol]);
+  }, [orders, catalog, currencySymbol]);
 
 
   // Unique districts for filter dropdown
@@ -1433,7 +1436,7 @@ export const WhatsAppShopSection: React.FC<WhatsAppShopSectionProps> = ({
                           {entry.orders.length} order{entry.orders.length > 1 ? 's' : ''} · {currencySymbol}{entry.totalSpend.toLocaleString()}
                         </strong>
                       </div>
-                      <div className="text-slate-600 truncate">
+                      <div className="text-slate-600 break-words">
                         <span className="text-slate-400">Bought: </span>
                         <span className="font-medium">{entry.orders[0]?.items}</span>
                       </div>
@@ -1599,7 +1602,7 @@ export const WhatsAppShopSection: React.FC<WhatsAppShopSectionProps> = ({
       {/* Universal 4-Channel Message Preview & Dispatch Modal (WhatsApp · Phone SMS · Email · Messenger) */}
       {selectedOrderForChat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             {(() => {
               const headerColors: Record<typeof modalChannel, string> = {

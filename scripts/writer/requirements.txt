@@ -1,0 +1,12 @@
+# Offline message writer: training and ONNX export (CPU only). Python 3.12.
+#   uv venv scripts/writer/.venv --python 3.12
+#   uv pip install --python scripts/writer/.venv -r scripts/writer/requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+transformers==4.46.3
+optimum[exporters,onnxruntime]==1.23.3
+onnx==1.17.0
+onnxruntime==1.20.1
+sentencepiece==0.2.0
+protobuf==5.28.3
+numpy==1.26.4

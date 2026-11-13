@@ -10,9 +10,11 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "start": "vite build && vite preview --open",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "get-model": "node scripts/get-model.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "canvas-confetti": "^1.9.4",

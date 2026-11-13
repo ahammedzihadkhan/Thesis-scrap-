@@ -1424,7 +1424,7 @@ t_band, t_new, {k: RESULTS[k] for k in ["tl_never_n", "tl_never_convert_pct", "t
 
 # %% [markdown]
 # ### 17a · Load Online Retail II and CDNOW
-# Downloads (if missing) and cleans the first year of Online Retail II and the CDNOW benchmark. If the CDNOW site refuses the download, the error says how to add the file by hand.
+# Downloads (if missing) and cleans the first year of Online Retail II and the CDNOW benchmark. If the CDNOW site refuses the download (it often refuses Colab), an identical copy from the open-source lifetimes package is used.
 
 # %%
 R2 = DATA / "retail2"
@@ -1448,10 +1448,19 @@ if not (CD / "CDNOW_master.txt").exists():
     try:
         if not (CD / "CDNOW_master.zip").exists():
             urllib.request.urlretrieve("https://www.brucehardie.com/datasets/CDNOW_master.zip", CD / "CDNOW_master.zip")
-    except Exception as e:  # the CDNOW site refuses some automated downloads
-        raise RuntimeError(f"Could not download CDNOW ({e}). Download CDNOW_master.zip in your browser from "
-                           f"https://www.brucehardie.com/datasets/ and put it (or CDNOW_master.txt) in {CD}, then run again.") from e
-    zipfile.ZipFile(CD / "CDNOW_master.zip").extract("CDNOW_master.txt", CD)
+        zipfile.ZipFile(CD / "CDNOW_master.zip").extract("CDNOW_master.txt", CD)
+    except Exception as e:  # the CDNOW site refuses some automated downloads (e.g. from Colab)
+        (CD / "CDNOW_master.zip").unlink(missing_ok=True)
+        # Same 69,659 rows, copied in the open-source lifetimes package, with one header line added
+        try:
+            mirror = "https://raw.githubusercontent.com/CamDavidsonPilon/lifetimes/master/lifetimes/datasets/CDNOW_master.txt"
+            lines = urllib.request.urlopen(mirror, timeout=60).read().decode().splitlines()[1:]
+            assert len(lines) == 69659, len(lines)
+            (CD / "CDNOW_master.txt").write_text("\n".join(lines) + "\n")
+            print(f"CDNOW site refused the download ({e}); used the identical copy in the lifetimes package.")
+        except Exception as e2:
+            raise RuntimeError(f"Could not download CDNOW ({e}; mirror: {e2}). Download CDNOW_master.zip in your browser from "
+                               f"https://www.brucehardie.com/datasets/ and put it (or CDNOW_master.txt) in {CD}, then run again.") from e2
 cd_raw = pd.read_csv(CD / "CDNOW_master.txt", sep=r"\s+", header=None, names=["CustomerID", "Date", "CDs", "Amount"], dtype={"CustomerID": str, "Date": str})
 cd_raw = cd_raw[cd_raw["Amount"] > 0].reset_index(drop=True)
 cd_tx = pd.DataFrame({"CustomerID": cd_raw["CustomerID"], "InvoiceNo": cd_raw.index.astype(str),
@@ -1601,6 +1610,77 @@ axes[1].axhline(0.5, ls=":", color="grey"); axes[1].set_xlabel("Days of history 
 axes[1].set_title("How much history makes a segment predictive?"); axes[1].legend(fontsize=8)
 savefig("f_all_datasets")
 hist_tbl
+
+# %% [markdown]
+# ## Part 18 — New: replication on recent real data (Open e-commerce 1.0, United States, 2018–2023)
+# The UCI file is from 2010–11. To show that the findings are not a property of old data, the same protocol runs on
+# **Open e-commerce 1.0** (Berke et al., *Scientific Data*, 2024): 1.85 million real Amazon.com purchases of 5,027
+# U.S. consumers who shared their own order histories for 2018–2022 in a 2022–23 survey (public domain, CC0,
+# Harvard Dataverse doi:10.7910/DVN/YGLYDY).
+#
+# * The file has no order number, so a customer's purchases on one day form one order.
+# * Each history ends when its owner took the survey (95% after June 2022), so the test uses a cutoff of
+#   1 January 2022 and the next 150 days (to 31 May 2022), before almost every history ends.
+# * Histories start on 1 January 2018 by design, not when the account was opened, so the "how much history is
+#   needed" test (Part 14e) does not apply here.
+
+# %% [markdown]
+# ### 18a · Load Open e-commerce 1.0
+# Downloads the purchase file from Harvard Dataverse if it is missing (313 MB, no login) and turns it into orders.
+
+# %%
+import urllib.request
+AM = DATA / "amazon"
+AM.mkdir(parents=True, exist_ok=True)
+am_csv = AM / "amazon-purchases.csv"
+if not am_csv.exists():
+    urllib.request.urlretrieve("https://dataverse.harvard.edu/api/access/datafile/7616235?format=original", am_csv)
+am_raw = pd.read_csv(am_csv, usecols=["Order Date", "Purchase Price Per Unit", "Quantity", "ASIN/ISBN (Product Code)", "Survey ResponseID"])
+am_raw["Order Date"] = pd.to_datetime(am_raw["Order Date"], errors="coerce")
+am_raw = am_raw.dropna(subset=["Order Date", "Survey ResponseID"])
+am_raw = am_raw[(am_raw["Purchase Price Per Unit"] > 0) & (am_raw["Quantity"] > 0) & (am_raw["Order Date"] < "2023-04-01")]
+am_tx = pd.DataFrame({
+    "CustomerID": am_raw["Survey ResponseID"].astype(str),
+    "InvoiceNo": am_raw["Survey ResponseID"].astype(str) + "_" + am_raw["Order Date"].dt.strftime("%Y%m%d"),
+    "InvoiceDate": am_raw["Order Date"],
+    "StockCode": am_raw["ASIN/ISBN (Product Code)"].fillna("unknown").astype(str),
+    "Amount": am_raw["Purchase Price Per Unit"] * am_raw["Quantity"],
+})
+am_last = am_tx.groupby("CustomerID")["InvoiceDate"].max()
+RESULTS["am_rows"], RESULTS["am_customers"] = len(am_tx), int(am_tx["CustomerID"].nunique())
+RESULTS["am_orders"] = int(am_tx["InvoiceNo"].nunique())
+RESULTS["am_history_ends_after_window_pct"] = round(100 * (am_last >= pd.Timestamp("2022-05-31")).mean(), 1)
+print(RESULTS["am_rows"], "purchases,", RESULTS["am_orders"], "orders,", RESULTS["am_customers"], "customers,",
+      am_tx["InvoiceDate"].min().date(), "to", am_tx["InvoiceDate"].max().date())
+
+# %% [markdown]
+# ### 18b · The same protocol on recent data, next to the main dataset
+# Segment quality and stability, out-of-sample repurchase AUC of every method, and the four hypotheses of the main analysis with a paired bootstrap and Holm's correction.
+
+# %%
+n_sig = len(SIG)
+am_row = robustness_test("Open e-commerce 1.0 (US, 2018-22)", True, am_tx, "2022-01-01", 150)
+am_sig = pd.DataFrame(SIG[n_sig:])
+del SIG[n_sig:]  # Part 17's table is already saved; this family of four tests is corrected on its own
+am_sig["Holm p"] = holm(am_sig["p"])
+am_sig["Significant (Holm 5%)"] = am_sig["Holm p"] < 0.05
+uci_row = all_tbl[all_tbl["Dataset"].str.startswith("UCI")].iloc[0].to_dict()
+recent = pd.DataFrame([uci_row, am_row])
+save_table(recent.assign(Dataset=recent["Dataset"].str.replace(r" \(.*\)", "", regex=True)).set_index("Dataset").T.rename_axis("Measure"),
+           "t_recent_dataset", index=True)
+save_table(am_sig.assign(p=am_sig["p"].map(fmt_p), **{"Holm p": am_sig["Holm p"].map(fmt_p)}), "t_recent_significance")
+RESULTS["am"] = {k: (v.item() if hasattr(v, "item") else v) for k, v in am_row.items()}
+RESULTS["am_sig"] = am_sig.drop(columns=["p"]).to_dict("records")
+
+fig, ax = plt.subplots(figsize=(8, 3.6))
+cols = ["AUC guest rule", "AUC quintile RFM", "AUC k=2", "AUC k=4", "AUC plain RFM k=4", "AUC supervised"]
+xpos = np.arange(len(cols))
+for off, r, c in [(-0.2, uci_row, "#9db3d1"), (0.2, am_row, "#1b7f5f")]:
+    ax.bar(xpos + off, [r[k] for k in cols], 0.4, color=c, label=r["Dataset"])
+ax.set_xticks(xpos, [k.replace("AUC ", "") for k in cols], fontsize=8); ax.set_ylim(0.45, 0.95); ax.axhline(0.5, ls=":", color="grey")
+ax.set_ylabel("Out-of-sample repurchase AUC"); ax.set_title("Old data (2010-11) and recent data (2018-22): same protocol"); ax.legend(fontsize=8)
+savefig("f_recent_dataset")
+recent.T, am_sig
 
 # %% [markdown]
 # ## Save headline results

@@ -22,7 +22,7 @@ cd thesis/notebook
 python build_notebook.py                 # builds and runs Extended_RFM_Thesis.ipynb (~30 min)
 ```
 
-Or run it in Google Colab without installing anything: [open the notebook in Colab](https://colab.research.google.com/github/ahammedzihadkhan/Thesis-scrap-/blob/main/thesis/notebook/Extended_RFM_Thesis.ipynb), then **Runtime → Run all**. The first cell fetches the project and the datasets download automatically, except CDNOW, whose site refuses automated downloads: download `CDNOW_master.zip` in your browser from [brucehardie.com/datasets](https://www.brucehardie.com/datasets/) and upload it to `/content/kroypulse/thesis/data/cdnow/` (in Colab: Files panel) before running Part 17.
+Or run it in Google Colab without installing anything: [open the notebook in Colab](https://colab.research.google.com/github/ahammedzihadkhan/Thesis-scrap-/blob/main/thesis/notebook/Extended_RFM_Thesis.ipynb), then **Runtime → Run all**. The first cell fetches the project and the datasets download automatically, except CDNOW, whose site refuses automated downloads: download `CDNOW_master.zip` in your browser from [brucehardie.com/datasets](https://www.brucehardie.com/datasets/) and upload it to `/content/kroypulse/thesis/data/cdnow/` (in Colab: Files panel) before running Part 17. Part 18 downloads Open e-commerce 1.0 (313 MB, public domain) from Harvard Dataverse by itself.
 
 The UCI Online Retail file is downloaded automatically the first time (or place `online_retail.csv` in `thesis/data/`).
 Outputs go to `thesis/outputs/figures`, `thesis/outputs/tables` (CSV + LaTeX) and `thesis/outputs/results.json`.
@@ -38,6 +38,7 @@ Headline results (UCI Online Retail, 4,338 customers, K-Means k = 4 on five log-
 | Early-stage customers (new or ≤ 2 orders) | 62 % of customers, 21 % of revenue; within-group AUC ≈ 0.60 |
 | Repurchase AUC with 30 / 60 / 90 / 180 days of history | 0.64 / 0.69 / 0.72 / 0.77 |
 | External validation: Olist (Brazil, 2016–18, 93,358 customers, 97 % one-time) | K-Means the only valid one of 8 algorithms; AUC k=4 0.575 vs guest rule 0.535 |
+| Recent real data: Open e-commerce 1.0 (Amazon.com, US, 2018–22, 5,026 customers; notebook Part 18) | Same protocol, cutoff 1 Jan 2022: AUC k=4 0.862 vs guest rule 0.520 and k=2 0.799 (both significant after Holm); plain RFM k=4 slightly higher (0.874) |
 | Account-age study: TheLook (synthetic, 100k users with account-creation time) | Segments ≈ chance for accounts < 90 days, rising with account age; profile parameters raise AUC 0.613 → 0.667; never-bought users: profile predicts first purchase, AUC 0.688 |
 
 ## 2. Run KroyPulse on your own computer
@@ -52,10 +53,12 @@ Or by hand:
 ```bash
 npm install
 npm start          # builds and opens http://127.0.0.1:4173
-npm test           # 28 unit tests (engine, two-track segments, data cleaner, local login, WhatsApp API)
+npm test           # 40 unit tests (engine, two-track segments, data cleaner, local login, WhatsApp API, real-data regressions, AI writer fact check, behaviour prediction)
 ```
 
-On first start you create the **owner account** (stored only on that computer). Staff accounts can be added from the bar at the top.
+To try the app, sign in with the **test account**: username `test`, password `test1234` (shown on the sign-in page).
+
+For real use, choose **Create the owner account** on the same page (accounts are stored only on that computer), add staff accounts from the bar at the top, and click **Remove test account** there. Anyone can read the test password, so the test account cannot add accounts once an owner exists, and after removal it is never created again on that computer.
 
 ### Features
 
@@ -64,6 +67,63 @@ On first start you create the **owner account** (stored only on that computer). 
 - **Extended RFM segmentation** — R, F, M, inter-purchase time and basket depth; K-Means with k-means++; Champions / Loyal / At-Risk / Hibernating; **two-track**: new or low-history (Early-Stage) customers get their own three segments (Promising newcomers, Just joined, Bought once) and lifecycle messages instead of segment offers.
 - **Validation computed live** — silhouette, Davies–Bouldin, Calinski–Harabasz, Hopkins, bootstrap stability, and a true temporal holdout. The five non-K-Means benchmark rows are labelled as thesis reference values.
 - **Send to everyone** — one offer per group in English or Bangla. Free one-by-one mode opens WhatsApp or Messenger with each message ready; optional automatic mode sends Meta-approved templates to opted-in customers through the official WhatsApp Business Cloud API (no unofficial WhatsApp automation, which gets numbers banned).
+- **Related-product suggestions** — each customer is offered what other customers who bought the same products chose (an electronics buyer gets related electronics), with recent purchases counting most; about one customer in four is offered a best seller of another type instead, so offers do not stay in one lane.
+- **Who will buy next** — for every customer: the chance they are still a customer, their expected orders and spend in the next 30, 90 or 180 days (BG/NBD and Gamma-Gamma, fitted in the browser), the customers with the most value ahead, and the valuable customers slipping away; export any list as CSV. The screen tests itself on the shop's own orders (fit before a cutoff, compare with what happened). On the real UCI file it ranked who bought again in the next 90 days with AUC 0.729 (a simple orders-per-week rule: 0.688); run `npx tsx scripts/evalBehaviour.ts` to repeat the check. The implementation reproduces the published CDNOW results of Fader, Hardie & Lee (2005).
+- **Offline AI writer (optional)** — a small fine-tuned model writes a different, persuasive message for each customer from their own buying habits, on the shop's CPU, with every message fact-checked (see below).
+
+### Offline AI writer (optional)
+
+In **Send messages**, choose a tone and press **Write … messages with AI**. For each customer, the model writes an English message from:
+- the products they buy most;
+- how many orders they have placed and how often;
+- when they last ordered;
+- the suggested product, its type, and why it was suggested (bought together with one of their products, the same type, a best seller, or something new);
+- its price, and the old price when the offer is a percentage discount;
+- their group's offer and code.
+
+Each customer group gets the persuasion that suits it, and only claims the facts support:
+- **Best customers:** recognition and a thank-you reward (reciprocity).
+- **Regulars:** their own habit and what other buyers of their product chose (consistency, social proof).
+- **Slipping away:** "we've missed you" and a reward that is already waiting (loss aversion).
+- **Inactive:** a warm welcome back and an easy first step.
+- **New customers:** a welcome and a reason for the second order.
+- **Every message:** the old price next to the new one (anchoring) and a one-word reply to order ("Reply YES"). There are no deadlines or "only 3 left" claims, because the shop sets none.
+
+The model is Google's [Flan-T5-small](https://huggingface.co/google/flan-t5-small) (77M parameters, Apache-2.0), fine-tuned in this project. It runs in the browser on the shop's CPU (8-bit ONNX in a Web Worker), and nothing is sent anywhere.
+
+Every message is fact-checked before use:
+- **Must appear exactly:** the suggested product, price, offer and code.
+- **Must not appear:** any other number, price, code, link or e-mail.
+- **If no draft passes:** the normal template is used.
+- **When codes, prices, the tone or the shop name change:** the old AI messages are no longer used, because each one is tied to the exact facts it was written from.
+- **Unexpected wording:** a message is also rejected if it repeats a sentence or contains a negation (such as "Do not use code …").
+- **Only supported claims:** "customers who bought X also bought Y" only when the shop's data shows it, "best seller" only for best sellers, and never a deadline or a stock level.
+
+Results on 600 customers the model never saw ([t_ai_writer.csv](thesis/outputs/tables/t_ai_writer.csv)):
+- **Fact check:** 98.0–100% of the final messages passed (the rest keep the template).
+- **Personal:** 95.3–97.7% used the customer's name and named a product they had bought.
+- **Persuasion the facts back:** 95–96% said what buyers of the customer's product chose, when the data showed it; every discounted offer showed the old price.
+- **Speed:** 0.75–0.9 s per message on a laptop CPU (1.2–1.34 drafts per message), or a few seconds per customer in the browser.
+- **Baseline:** a general small model, SmolLM2-360M prompted with the same facts, passed for none of 30 customers.
+
+The training examples come from a phrase grammar ([scripts/writer/make_data.py](scripts/writer/make_data.py)) filled with synthetic Bangladeshi shop customers and real UCI customers. Every fact in a training message is copied from that customer's data, so the model never learns to invent one, and every generated example must pass the app's fact check.
+
+The model is too large for Git, so build it once (CPU only; about 4–5 hours on a 4-core laptop with 8 GB of memory):
+
+```bash
+uv venv scripts/writer/.venv --python 3.12
+uv pip install --python scripts/writer/.venv -r scripts/writer/requirements.txt
+scripts/writer/.venv/Scripts/python scripts/writer/make_data.py   # training data (needs thesis/data/online_retail.csv)
+scripts/writer/.venv/Scripts/python scripts/writer/train.py --steps 2700 --batch 8 --lr 7e-4 --checkpointing
+scripts/writer/.venv/Scripts/python scripts/writer/export.py      # -> public/models/kroypulse-writer
+npx tsx scripts/evalAiWriter.ts                                   # fact-check pass rate and speed on unseen customers
+```
+
+On macOS or Linux, use `scripts/writer/.venv/bin/python`. Then run `npm start` again. (The shipped model was trained in two stages: 1,500 steps on an earlier grammar, then 1,200 steps on this one with `--init scripts/writer/out/model_v1 --lr 5e-4 --checkpointing`. The single from-scratch command above has not been run; check its result with the evaluation script.)
+
+### Data model
+
+The ER diagram of the app's records (accounts, orders, customers, segments, products, suggestions, predictions, messages) is in [docs/ER_DIAGRAM.md](docs/ER_DIAGRAM.md) (Mermaid, rendered by GitHub) and as an image in [thesis/outputs/figures/f_er_diagram.png](thesis/outputs/figures/f_er_diagram.png).
 
 ### Security and privacy
 
@@ -71,14 +131,15 @@ On first start you create the **owner account** (stored only on that computer). 
 |---|---|
 | All computation in the browser; no backend, no analytics, no external fonts | whole app |
 | Content-Security-Policy: connections only to the app itself and Meta's official WhatsApp API (used only for automatic sending, after you press Send) | [vite.config.ts](vite.config.ts) |
+| WebAssembly is allowed only so the offline AI writer can run (`'wasm-unsafe-eval'`; JavaScript `eval` stays blocked); its model and runtime are served by the app itself, never by a CDN | [vite.config.ts](vite.config.ts), [src/ai/writerWorker.ts](src/ai/writerWorker.ts) |
 | Server binds to `127.0.0.1` only (not reachable from the local network) | [vite.config.ts](vite.config.ts) |
-| `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, restrictive Permissions-Policy | [vite.config.ts](vite.config.ts) |
-| Local accounts: PBKDF2-SHA-256 (600,000 iterations, 16-byte salt), constant-time compare, lockout after 5 failures, 8-hour session, auto-lock after 30 min idle | [src/auth/localAuth.ts](src/auth/localAuth.ts) |
+| `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, restrictive Permissions-Policy, cross-origin isolation (COOP + COEP) | [vite.config.ts](vite.config.ts) |
+| Local accounts: PBKDF2-SHA-256 (600,000 iterations, 16-byte salt), constant-time compare, lockout after 5 failures, 8-hour session, auto-lock after 30 min idle; locking also clears the WhatsApp API token; the test account cannot add accounts once an owner exists and can be removed for good | [src/auth/localAuth.ts](src/auth/localAuth.ts), [src/Root.tsx](src/Root.tsx) |
 | Upload limits (50 MB, 600k rows, CSV/TSV/XLSX only); cells read as text | [src/rfm/fileParser.ts](src/rfm/fileParser.ts) |
 | Spreadsheet formula-injection protection on CSV export | [src/rfm/dataCleaner.ts](src/rfm/dataCleaner.ts) |
 | Patched SheetJS 0.20.3 (fixes CVE-2023-30533, CVE-2024-22363); unused server/AI packages removed; `npm audit`: 0 vulnerabilities | [package.json](package.json) |
 
-The login protects the app from other people using the same computer. It cannot protect against someone who fully controls the device, and there is no password reset (clear the site data to start again; no customer data is stored, so nothing is lost).
+Once the test account is removed, the login protects the app from other people using the same computer. It cannot protect against someone who fully controls the device, and there is no password reset (clear the site data to start again; no customer data is stored, so nothing is lost).
 
 Before messaging customers, get their consent and follow WhatsApp / Facebook rules.
 

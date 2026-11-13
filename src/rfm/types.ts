@@ -50,6 +50,8 @@ export interface CleanedTransaction {
   unifiedKey: string;
   isGuest: boolean;
   sku: string;
+  /** Readable product name when the file has one (e.g. Description, product_name). */
+  productName?: string;
   quantity: number;
   unitPrice: number;
   totalAmount: number;
@@ -57,7 +59,7 @@ export interface CleanedTransaction {
 
 export interface FilteredRecordDetail {
   orderId: string;
-  reason: 'cancelled_order' | 'negative_amount' | 'zero_amount' | 'invalid_date' | 'missing_order_id' | 'corrupt_data';
+  reason: 'cancelled_order' | 'negative_amount' | 'zero_amount' | 'invalid_date' | 'missing_order_id' | 'corrupt_data' | 'no_customer_identity';
   reasonLabel: string;
   rawSnippet: string;
 }

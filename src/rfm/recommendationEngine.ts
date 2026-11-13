@@ -3,6 +3,10 @@ import {
   PersonaType,
   CleanedTransaction,
 } from './types';
+import { productType, type ProductType } from './productType';
+
+/** Why a product was suggested; the message writer may only claim what the reason supports. */
+export type SuggestionKind = 'bought together' | 'same kind' | 'best seller' | 'something new';
 
 export interface ProductCatalogItem {
   sku: string;
@@ -11,6 +15,8 @@ export interface ProductCatalogItem {
   price: number;
   description?: string;
   complementaryCategories: string[];
+  /** Share of the shop's buyers who bought it, relative to the best seller (shop catalogs only). */
+  popularity?: number;
 }
 
 export interface ProductRecommendation {
@@ -26,6 +32,9 @@ export interface ProductRecommendation {
   bundleSavings: number;
   pitchSnippetEn: string;
   pitchSnippetBn: string;
+  /** Shop-data suggestions only: why it was chosen, and the customer's product it comes from. */
+  suggestionKind?: SuggestionKind;
+  basisProduct?: string;
 }
 
 export interface CustomerRecommendationProfile {
@@ -249,6 +258,9 @@ export function buildPersonalizedPitchScripts(
   return { pitchEn, pitchBn };
 }
 
+/** Whole units for normal prices; cents for small ones, so a 2.95 item never costs 3 "after the discount". */
+const roundPrice = (x: number) => (x >= 100 ? Math.round(x) : Math.round(x * 100) / 100);
+
 /**
  * Derives a recommended product for a customer given their purchase history and persona
  */
@@ -256,7 +268,8 @@ export function generateCustomerRecommendation(
   customer: CustomerRFMTD,
   pastPurchasedItems: string[] = [],
   catalog: ProductCatalogItem[] = BANGLADESHI_CATALOG,
-  currencySymbol = '৳'
+  currencySymbol = '৳',
+  related: RelatedPick | null = null
 ): CustomerRecommendationProfile {
   const persona = customer.persona || 'Loyal & Promising Regulars';
   const discountConfig = getPersonaDiscountConfig(persona);
@@ -321,6 +334,10 @@ export function generateCustomerRecommendation(
 
     let score = 50; // base score
     let reason = 'Trending customer favorite';
+    if (item.popularity !== undefined) {
+      score += Math.round(20 * item.popularity);
+      reason = 'Popular with your other customers';
+    }
 
     if (targetCategories.has(item.category)) {
       score += 30;
@@ -356,17 +373,18 @@ export function generateCustomerRecommendation(
   // Sort candidates by score descending
   candidateScores.sort((a, b) => b.score - a.score);
 
-  // Top recommendation
-  const topCandidate = candidateScores[0] || {
-    item: catalog[0],
-    score: 85,
-    reason: 'Storewide bestseller pairing',
-  };
+  // Top recommendation: from the shop's own baskets when there are any (pickRelated), else the catalog score
+  const relatedCandidate = related && candidateScores.find((c) => c.item.sku === related.sku);
+  const topCandidate = relatedCandidate
+    ? { ...relatedCandidate, reason: relatedReason(related!) }
+    : candidateScores[0] || {
+        item: catalog[0],
+        score: 85,
+        reason: 'Storewide bestseller pairing',
+      };
 
-  const discountedPrice = Math.round(
-    topCandidate.item.price * (1 - discountConfig.discountPct / 100)
-  );
-  const bundleSavings = topCandidate.item.price - discountedPrice;
+  const discountedPrice = roundPrice(topCandidate.item.price * (1 - discountConfig.discountPct / 100));
+  const bundleSavings = roundPrice(topCandidate.item.price - discountedPrice);
 
   const rawKey = customer.customerKey.startsWith('cust_')
     ? customer.customerKey.slice(5)
@@ -401,15 +419,15 @@ export function generateCustomerRecommendation(
     bundleSavings,
     pitchSnippetEn: pitchEn,
     pitchSnippetBn: pitchBn,
+    ...(relatedCandidate ? { suggestionKind: related!.kind, basisProduct: related!.basis } : {}),
   };
 
   // Alternative recommendations (ranks 2 & 3)
   const alternativeRecommendations: ProductRecommendation[] = candidateScores
-    .slice(1, 3)
+    .filter((cand) => cand.item.sku !== topCandidate.item.sku)
+    .slice(0, 2)
     .map((cand) => {
-      const altDiscounted = Math.round(
-        cand.item.price * (1 - discountConfig.discountPct / 100)
-      );
+      const altDiscounted = roundPrice(cand.item.price * (1 - discountConfig.discountPct / 100));
       const scripts = buildPersonalizedPitchScripts(
         customer.phone || 'Friend',
         cand.item,
@@ -429,7 +447,7 @@ export function generateCustomerRecommendation(
         discountCode: discountConfig.discountCode,
         affinityScorePct: Math.min(95, Math.max(65, Math.round(cand.score))),
         recommendationReason: cand.reason,
-        bundleSavings: cand.item.price - altDiscounted,
+        bundleSavings: roundPrice(cand.item.price - altDiscounted),
         pitchSnippetEn: scripts.pitchEn,
         pitchSnippetBn: scripts.pitchBn,
       };
@@ -455,6 +473,154 @@ export function generateCustomerRecommendation(
 }
 
 /**
+ * The shop's own best sellers (most distinct buyers) as a catalog, so suggestions name products the shop sells.
+ * shortcut: a file without a product column falls back to the built-in demo catalog; show no suggestion instead if such files become common.
+ */
+export function buildShopCatalog(rows: CleanedTransaction[], limit = 40): ProductCatalogItem[] {
+  const bySku = new Map<string, { buyers: Set<string>; prices: number[]; names: Map<string, number> }>();
+  for (const r of rows) {
+    if (!r.sku || /^(order|sku)_/.test(r.sku)) continue; // placeholders the stitcher uses when there is no product column
+    const e = bySku.get(r.sku) ?? { buyers: new Set<string>(), prices: [], names: new Map<string, number>() };
+    e.buyers.add(r.unifiedKey);
+    e.prices.push(r.unitPrice);
+    if (r.productName) e.names.set(r.productName, (e.names.get(r.productName) ?? 0) + 1);
+    bySku.set(r.sku, e);
+  }
+  const top = [...bySku].sort((a, b) => b[1].buyers.size - a[1].buyers.size).slice(0, limit);
+  if (top.length === 0) return BANGLADESHI_CATALOG;
+  const most = top[0][1].buyers.size;
+  return top.map(([sku, e]) => {
+    const prices = [...e.prices].sort((a, b) => a - b);
+    return {
+      sku,
+      name: [...e.names].sort((a, b) => b[1] - a[1])[0]?.[0] ?? sku,
+      category: 'Best sellers',
+      price: Math.round(prices[Math.floor(prices.length / 2)] * 100) / 100,
+      complementaryCategories: [],
+      popularity: e.buyers.size / most,
+    };
+  });
+}
+
+/** Who bought what in the shop's own data, for pickRelated. */
+export interface ShopBaskets {
+  bought: Map<string, Map<string, number>>; // customer -> sku -> time of their last purchase of it
+  buyers: Map<string, number>; // sku -> customers who bought it
+  co: Map<string, Map<string, number>>; // sku -> catalog sku -> customers who bought both
+  names: Map<string, string>;
+  types: Map<string, ProductType>;
+  end: number; // time of the shop's last order
+}
+
+export interface RelatedPick {
+  sku: string;
+  kind: SuggestionKind;
+  basis?: string; // the customer's product the suggestion comes from
+}
+
+const DAY_MS = 86_400_000;
+/** Every fourth customer is offered a best seller of another product type, so offers do not stay in one lane. */
+export const EXPLORE_EVERY = 4;
+
+/** True for the customers (about one in four, fixed per customer) who are offered another type of product. */
+export function exploresOtherTypes(customerKey: string): boolean {
+  let h = 0x811c9dc5; // FNV-1a: the same customer always gets the same answer
+  for (let i = 0; i < customerKey.length; i++) h = Math.imul(h ^ customerKey.charCodeAt(i), 0x01000193);
+  return (h >>> 0) % EXPLORE_EVERY === 0;
+}
+
+/** Null for the built-in demo catalog: only a catalog made from the shop's own file (buildShopCatalog) has baskets. */
+export function buildBaskets(rows: CleanedTransaction[], catalog: ProductCatalogItem[]): ShopBaskets | null {
+  if (!catalog.some((c) => c.popularity !== undefined)) return null;
+  const bought = new Map<string, Map<string, number>>();
+  const names = new Map<string, string>(catalog.map((c) => [c.sku, c.name]));
+  let end = 0;
+  for (const r of rows) {
+    if (!r.sku || /^(order|sku)_/.test(r.sku)) continue; // placeholders when the file has no product column
+    const t = r.timestamp.getTime();
+    const mine = bought.get(r.unifiedKey) ?? new Map<string, number>();
+    mine.set(r.sku, Math.max(mine.get(r.sku) ?? 0, t));
+    bought.set(r.unifiedKey, mine);
+    if (r.productName && !names.has(r.sku)) names.set(r.sku, r.productName);
+    end = Math.max(end, t);
+  }
+  const inCatalog = new Set(catalog.map((c) => c.sku));
+  const buyers = new Map<string, number>();
+  const co = new Map<string, Map<string, number>>();
+  for (const items of bought.values()) {
+    const mineInCatalog = [...items.keys()].filter((s) => inCatalog.has(s));
+    for (const a of items.keys()) {
+      buyers.set(a, (buyers.get(a) ?? 0) + 1);
+      const row = co.get(a) ?? new Map<string, number>();
+      for (const b of mineInCatalog) if (b !== a) row.set(b, (row.get(b) ?? 0) + 1);
+      co.set(a, row);
+    }
+  }
+  const types = new Map<string, ProductType>([...names].map(([sku, n]) => [sku, productType(n)]));
+  return { bought, buyers, co, names, types, end };
+}
+
+/**
+ * The next product for one customer, from the shop's own data (item-based co-purchase):
+ * 1. every fourth customer: the catalog product of another type that customers like them bought most;
+ * 2. otherwise the product most bought by customers who bought the same products (at least two of them),
+ *    with the customer's recent purchases counting most (weight halves every 90 days) and their usual type preferred;
+ * 3. else a best seller of their usual type; 4. else the best seller they lack.
+ * The catalog must list best sellers first (buildShopCatalog does).
+ */
+export function pickRelated(customerKey: string, catalog: ProductCatalogItem[], b: ShopBaskets): RelatedPick | null {
+  const mine = b.bought.get(customerKey);
+  if (!mine?.size) return null;
+  const open = catalog.filter((c) => !mine.has(c.sku));
+  if (!open.length) return null;
+  const typeOf = (sku: string) => b.types.get(sku) ?? 'other';
+  const weight = new Map([...mine].map(([sku, t]) => [sku, 0.5 ** ((b.end - t) / (90 * DAY_MS))]));
+  const typeWeight = new Map<ProductType, number>();
+  for (const [sku, w] of weight) typeWeight.set(typeOf(sku), (typeWeight.get(typeOf(sku)) ?? 0) + w);
+  const usual = [...typeWeight].sort((x, y) => y[1] - x[1] || y[0].localeCompare(x[0]))[0][0];
+
+  const score = new Map<string, number>();
+  const anchor = new Map<string, [number, string]>();
+  for (const [a, w] of weight) {
+    const na = b.buyers.get(a) ?? 1;
+    for (const [s, n] of b.co.get(a) ?? []) {
+      if (mine.has(s)) continue;
+      const v = (w * n) / Math.sqrt(na * (b.buyers.get(s) ?? 1)); // cosine similarity of the two products' buyers
+      score.set(s, (score.get(s) ?? 0) + v);
+      if (n >= 2 && v > (anchor.get(s)?.[0] ?? 0)) anchor.set(s, [v, a]);
+    }
+  }
+  const best = (list: ProductCatalogItem[], value: (c: ProductCatalogItem) => number) =>
+    list.reduce((x, y) => (value(y) > value(x) ? y : x)); // ties keep the better seller
+  const name = (sku: string) => b.names.get(sku) ?? sku;
+
+  if (exploresOtherTypes(customerKey) && usual !== 'other') {
+    const others = open.filter((c) => typeOf(c.sku) !== usual);
+    if (others.length) return { sku: best(others, (c) => score.get(c.sku) ?? 0).sku, kind: 'something new' };
+  }
+  const together = open.filter((c) => anchor.has(c.sku));
+  if (together.length) {
+    const pick = best(together, (c) => (score.get(c.sku) ?? 0) * (typeOf(c.sku) === usual ? 1.5 : 1));
+    return { sku: pick.sku, kind: 'bought together', basis: name(anchor.get(pick.sku)![1]) };
+  }
+  const same = usual === 'other' ? undefined : open.find((c) => typeOf(c.sku) === usual);
+  if (same) {
+    const recent = [...mine].filter(([s]) => typeOf(s) === usual).sort((x, y) => y[1] - x[1])[0][0];
+    return { sku: same.sku, kind: 'same kind', basis: name(recent) };
+  }
+  return { sku: open[0].sku, kind: 'best seller' };
+}
+
+function relatedReason(p: RelatedPick): string {
+  switch (p.kind) {
+    case 'bought together': return `Customers who bought ${p.basis} also bought it`;
+    case 'same kind': return `Same type as ${p.basis}, which they bought recently`;
+    case 'something new': return 'A best seller of another type, to widen their basket';
+    default: return 'One of your best sellers they have not bought yet';
+  }
+}
+
+/**
  * Generates recommendation profiles for all customers in RFM list
  */
 export function generateBulkRecommendations(
@@ -463,6 +629,7 @@ export function generateBulkRecommendations(
   catalog: ProductCatalogItem[] = BANGLADESHI_CATALOG,
   currencySymbol = '৳'
 ): Map<string, CustomerRecommendationProfile> {
+  const baskets = buildBaskets(cleanedTransactions, catalog);
   // Map customerKey to their past purchased items
   const itemsByCustomer = new Map<string, string[]>();
   cleanedTransactions.forEach((tx) => {
@@ -474,12 +641,13 @@ export function generateBulkRecommendations(
 
   const profileMap = new Map<string, CustomerRecommendationProfile>();
   customers.forEach((c) => {
-    const pastItems = itemsByCustomer.get(c.customerKey) || [];
+    const pastItems = [...new Set(itemsByCustomer.get(c.customerKey) || [])];
     const profile = generateCustomerRecommendation(
       c,
       pastItems,
       catalog,
-      currencySymbol
+      currencySymbol,
+      baskets && pickRelated(c.customerKey, catalog, baskets)
     );
     profileMap.set(c.customerKey, profile);
   });

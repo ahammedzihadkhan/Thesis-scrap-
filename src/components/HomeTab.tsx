@@ -1,5 +1,5 @@
 import React from 'react';
-import { CustomerRFMTD, EarlySegment, PersonaType } from '../rfm/types';
+import { CustomerRFMTD, EarlySegment, PersonaType, TemporalHoldoutResult } from '../rfm/types';
 import { EARLY_SEGMENT_METAS, PERSONA_METAS } from '../rfm/mlClustering';
 import { ArrowRight, Crown, Heart, MessageCircle, Moon, Sparkles, TriangleAlert, Upload, UserPlus, Wand2 } from 'lucide-react';
 
@@ -14,6 +14,8 @@ interface Props {
   onUpload: () => void;
   onLoadSample: () => void;
   onNavigate: (tab: Tab) => void;
+  /** Temporal holdout on the shop's own orders: did each group actually buy again after the split date? */
+  holdout?: TemporalHoldoutResult | null;
 }
 
 // Plain-language names so a shop owner does not need to know what "RFM" or "clusters" are.
@@ -24,9 +26,11 @@ const GROUPS: { persona: PersonaType; name: string; bn: string; meaning: string;
   { persona: 'Hibernating / Lost Guests', name: 'Inactive / one-time', bn: 'নিষ্ক্রিয় কাস্টমার', meaning: 'Bought once or long ago.', action: 'A low-cost reminder or clearance offer is enough.', icon: <Moon className="w-5 h-5" /> },
 ];
 
-export const HomeTab: React.FC<Props> = ({ customers, datasetName, validOrders, revenue, currencySymbol, onUpload, onLoadSample, onNavigate }) => {
+export const HomeTab: React.FC<Props> = ({ customers, datasetName, validOrders, revenue, currencySymbol, onUpload, onLoadSample, onNavigate, holdout }) => {
   const total = customers.length || 1;
   const early = customers.filter((c) => c.lifecycleStage === 'Early-Stage').length;
+  // Thesis finding: a new customer's group becomes reliable after about 90 days of history.
+  const building = customers.filter((c) => c.lifecycleStage === 'Early-Stage' && (c.tenureDays ?? 0) <= 90).length;
   const steps = [
     { n: 1, title: 'Add your orders', text: 'Upload a CSV or Excel file of your orders, or try a sample.', done: validOrders > 0 },
     { n: 2, title: 'Clean automatically', text: 'Dates, prices, phone numbers and duplicates are fixed for you.', done: validOrders > 0 },
@@ -74,6 +78,7 @@ export const HomeTab: React.FC<Props> = ({ customers, datasetName, validOrders, 
           {GROUPS.map((g) => {
             const meta = PERSONA_METAS[g.persona];
             const count = customers.filter((c) => c.persona === g.persona && !c.earlySegment).length;
+            const proof = holdout?.segments.find((s) => s.persona === g.persona);
             return (
               <article key={g.persona} className="bg-white rounded-2xl border p-4 shadow-xs flex flex-col" style={{ borderTop: `4px solid ${meta.color}` }}>
                 <div className="flex items-center gap-2" style={{ color: meta.color }}>
@@ -86,6 +91,11 @@ export const HomeTab: React.FC<Props> = ({ customers, datasetName, validOrders, 
                   <span className="text-xs text-slate-500">customers · {Math.round((100 * count) / total)}%</span>
                 </div>
                 <p className="text-sm text-slate-600 mt-2">{g.meaning}</p>
+                <p className="text-xs text-slate-600 mt-2" title="Groups were formed from orders before the test date; this is what those customers did afterwards.">
+                  {proof && proof.trainCustomerCount >= 5
+                    ? <>Tested on your orders: <strong className="text-slate-900">{Math.round(proof.repurchaseRatePct)}%</strong> of this group bought again after {holdout!.splitDate}.</>
+                    : 'Not enough order history yet to test this group on your data.'}
+                </p>
                 <p className="text-sm text-slate-800 mt-2 bg-slate-50 rounded-lg p-2"><strong>What to do:</strong> {g.action}</p>
                 <button onClick={() => onNavigate(4)} className="mt-auto pt-3 text-sm font-bold inline-flex items-center gap-1 cursor-pointer" style={{ color: meta.color }}>
                   <MessageCircle className="w-4 h-4" /> Prepare messages <ArrowRight className="w-3.5 h-3.5" />
@@ -102,6 +112,9 @@ export const HomeTab: React.FC<Props> = ({ customers, datasetName, validOrders, 
         </h2>
         <p className="text-sm text-sky-900 mt-1">
           First order in the last 90 days, or only 1–2 orders. Our research found it is too early to judge them, so they get a welcome-style message instead of an offer.
+          {' '}{building === 1 ? '1 is' : `${building.toLocaleString()} are`} still building history (first order less than 90 days ago) and{' '}
+          {early - building === 1 ? '1 is an older customer' : `${(early - building).toLocaleString()} are older customers`} with only 1–2 orders.
+          A customer's group becomes reliable after about 90 days of history.
         </p>
         <div className="mt-3 grid sm:grid-cols-3 gap-3">
           {(Object.keys(EARLY_SEGMENT_METAS) as EarlySegment[]).map((s) => {

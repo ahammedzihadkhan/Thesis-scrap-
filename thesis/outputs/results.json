@@ -298,5 +298,68 @@
       "95% CI high": 0.017,
       "Holm p": 0.352
     }
+  ],
+  "am_rows": 1850699,
+  "am_customers": 5026,
+  "am_orders": 824905,
+  "am_history_ends_after_window_pct": 95.1,
+  "am": {
+    "Dataset": "Open e-commerce 1.0 (US, 2018-22)",
+    "Real data": true,
+    "Cutoff": "2022-01-01",
+    "Horizon (days)": 150,
+    "Customers": 4991,
+    "One-time (%)": 0.9,
+    "Early-stage (%)": 2.0,
+    "Silhouette k=4": 0.324,
+    "Bootstrap ARI k=4": 0.805,
+    "Valid k=4": true,
+    "Repurchase (%)": 91.3,
+    "AUC guest rule": 0.52,
+    "AUC quintile RFM": 0.842,
+    "AUC k=2": 0.799,
+    "AUC k=4": 0.862,
+    "AUC plain RFM k=4": 0.874,
+    "AUC supervised": 0.913,
+    "AUC k=4 early-stage": 0.512,
+    "AUC k=4 established": 0.859
+  },
+  "am_sig": [
+    {
+      "Dataset": "Open e-commerce 1.0",
+      "Hypothesis": "k=4 vs guest rule",
+      "AUC difference": 0.342,
+      "95% CI low": 0.312,
+      "95% CI high": 0.373,
+      "Holm p": 0.004,
+      "Significant (Holm 5%)": true
+    },
+    {
+      "Dataset": "Open e-commerce 1.0",
+      "Hypothesis": "k=4 vs k=2",
+      "AUC difference": 0.063,
+      "95% CI low": 0.05,
+      "95% CI high": 0.077,
+      "Holm p": 0.004,
+      "Significant (Holm 5%)": true
+    },
+    {
+      "Dataset": "Open e-commerce 1.0",
+      "Hypothesis": "k=4 vs quintile RFM",
+      "AUC difference": 0.021,
+      "95% CI low": 0.008,
+      "95% CI high": 0.034,
+      "Holm p": 0.004,
+      "Significant (Holm 5%)": true
+    },
+    {
+      "Dataset": "Open e-commerce 1.0",
+      "Hypothesis": "k=4 vs plain RFM k=4",
+      "AUC difference": -0.011,
+      "95% CI low": -0.021,
+      "95% CI high": -0.002,
+      "Holm p": 0.024,
+      "Significant (Holm 5%)": true
+    }
   ]
 }

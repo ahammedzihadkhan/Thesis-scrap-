@@ -27,6 +27,8 @@ interface Tab3MLValidationProps {
   preprocessingStats: PreprocessingStats[];
   wcssHistory: { k: number; wcss: number; silhouette: number; db: number }[];
   currencySymbol: string;
+  /** Customers the groups were fitted on (established customers, two-track). */
+  fittedOn: number;
 }
 
 export const Tab3MLValidation: React.FC<Tab3MLValidationProps> = ({
@@ -38,6 +40,7 @@ export const Tab3MLValidation: React.FC<Tab3MLValidationProps> = ({
   preprocessingStats,
   wcssHistory,
   currencySymbol,
+  fittedOn,
 }) => {
   const [activeCurve, setActiveCurve] = useState<'elbow' | 'silhouette' | 'db'>('elbow');
 
@@ -53,11 +56,12 @@ export const Tab3MLValidation: React.FC<Tab3MLValidationProps> = ({
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-slate-900 tracking-tight">ML Model Validation & Tuning</h2>
             <span className="text-[11px] bg-emerald-50 text-emerald-800 font-semibold px-2 py-0.5 rounded-md border border-emerald-200/80">
-              Optimal k = 4 (Recommended)
+              k = 4 recommended
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Evaluate mathematical stability, cluster compactness, silhouette coefficients, and temporal holdout predictive validity.
+            {' '}Measured on the {fittedOn.toLocaleString()} customers the four groups are fitted on (established customers; new customers have their own groups).
           </p>
         </div>
 
@@ -280,7 +284,7 @@ export const Tab3MLValidation: React.FC<Tab3MLValidationProps> = ({
           </div>
 
           <div className="mt-3 text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-            <strong>Elbow Analysis:</strong> The rate of inertia reduction drops noticeably past k = 4, confirming that 4 distinct retail personas capture the natural cluster structure without over-partitioning.
+            <strong>How to read this:</strong> customer behaviour is a continuum, so the curves rarely show a sharp elbow and the Silhouette usually prefers k = 2. k = 4 is recommended because four groups predict who buys again better (see the future repurchase test below).
           </div>
         </div>
 

@@ -9,6 +9,6 @@ html, body, #root {
   min-height: 100vh;
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+  overflow-x: clip; /* clip, not hidden: hidden makes #root a scroll box and breaks the pinned tab bar */
   font-family: 'Hind Siliguri', 'Inter', 'Segoe UI', 'Nirmala UI', 'Noto Sans Bengali', -apple-system, BlinkMacSystemFont, Roboto, system-ui, sans-serif;
 }

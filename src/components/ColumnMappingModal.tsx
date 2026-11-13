@@ -79,7 +79,7 @@ export const ColumnMappingModal: React.FC<ColumnMappingModalProps> = ({
                   </option>
                 ))}
               </select>
-              <span className="text-[11px] text-slate-400 mt-1 block">e.g., InvoiceNo, order_id, receipt_id</span>
+              <span className="text-[11px] text-slate-400 mt-1 block">e.g., InvoiceNo, order_id, receipt_id. No order number? Pick the date column: a customer's purchases on one day then count as one order.</span>
             </div>
 
             <div>

@@ -23,6 +23,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { downloadCsv } from '../rfm/dataCleaner';
 
 interface DataHygieneBarProps {
   stats: DataHygieneStats;
@@ -123,18 +124,11 @@ export const DataHygieneBar: React.FC<DataHygieneBarProps> = ({
         f.orderId,
         f.reason,
         f.reasonLabel,
-        f.rawSnippet.replace(/"/g, '""'),
+        f.rawSnippet,
       ]),
     ];
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + reportRows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
-    const encoded = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encoded);
-    link.setAttribute('download', `Data_Hygiene_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`Data_Hygiene_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, reportRows);
     confetti({ particleCount: 45, spread: 60, origin: { y: 0.85 } });
   };
 
@@ -337,7 +331,7 @@ export const DataHygieneBar: React.FC<DataHygieneBarProps> = ({
                   <span className="text-xs font-semibold text-rose-700">filtered</span>
                 </div>
                 <p className="text-[10px] text-rose-700/80 mt-0.5">
-                  {stats.cancelledRowsRemoved} cancelled / returns · {stats.duplicateOrInvalidRowsRemoved} empty or zero
+                  {stats.cancelledRowsRemoved} cancelled / returns · {stats.duplicateOrInvalidRowsRemoved} invalid or without a customer
                 </p>
               </div>
             </div>
@@ -517,13 +511,6 @@ export const DataHygieneBar: React.FC<DataHygieneBarProps> = ({
                       </div>
                     </div>
                   </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500">Hygiene Standard:</span>
-                    <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      ISO/IEC 25012 Compliant
-                    </span>
-                  </div>
                 </div>
               </div>
             )}
@@ -686,7 +673,7 @@ export const DataHygieneBar: React.FC<DataHygieneBarProps> = ({
                                     : 'bg-slate-100 text-slate-700'
                                 }`}
                               >
-                                {item.reason.replace('_', ' ').toUpperCase()}
+                                {item.reason.replace(/_/g, ' ').toUpperCase()}
                               </span>
                             </td>
                             <td className="py-2 px-3 font-sans text-slate-700">{item.reasonLabel}</td>
@@ -723,7 +710,7 @@ export const DataHygieneBar: React.FC<DataHygieneBarProps> = ({
                         📦 Daraz BD & Pickaboo (1,049 Orders)
                       </span>
                       <span className="text-[10px] text-emerald-700 mt-0.5 block">
-                        Real Uploaded Daraz CSV · Electronics · BDT (৳)
+                        Sample Daraz-format orders · Electronics · BDT (৳)
                       </span>
                     </button>
                   )}

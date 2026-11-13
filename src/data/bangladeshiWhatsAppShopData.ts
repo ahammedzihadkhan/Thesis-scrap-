@@ -17,7 +17,7 @@ export interface FCommerceOrder {
   quantity: number;
   unitPrice: number;
   totalAmountBDT: number;
-  paymentMethod: 'bKash Merchant' | 'bKash Personal' | 'Nagad' | 'Cash on Delivery (COD)' | 'Bank Transfer';
+  paymentMethod: 'bKash Merchant' | 'bKash Personal' | 'Nagad' | 'Cash on Delivery (COD)' | 'Bank Transfer' | 'Not recorded';
   advancePaidBDT: number;
   dueAmountBDT: number;
   deliveryDistrict: string;
@@ -5091,7 +5091,7 @@ export function computeWhatsAppShopKPIs(orders: FCommerceOrder[]): WhatsAppShopK
       smsReachableCount++;
     } else if (o.preferredChannel === 'email') {
       emailReachableCount++;
-    } else if (o.preferredChannel === 'messenger' || (!hasWaPhone && !hasSmsPhone && hasMessenger)) {
+    } else if (hasMessenger && (o.preferredChannel === 'messenger' || (!hasWaPhone && !hasSmsPhone))) {
       messengerOrderCount++;
       missingPhoneCount++;
     } else if (hasWaPhone) {
@@ -5101,8 +5101,7 @@ export function computeWhatsAppShopKPIs(orders: FCommerceOrder[]): WhatsAppShopK
     } else if (hasEmail) {
       emailReachableCount++;
     } else {
-      messengerOrderCount++;
-      missingPhoneCount++;
+      missingPhoneCount++; // no contact details at all: not reachable on any channel
     }
 
     // Unified customer key for deduplication across Phone, Email, and Social ID
@@ -5121,7 +5120,7 @@ export function computeWhatsAppShopKPIs(orders: FCommerceOrder[]): WhatsAppShopK
     if (isPrepaid) {
       prepaidCount++;
       prepaidRevenueBDT += o.totalAmountBDT;
-    } else {
+    } else if (o.paymentMethod !== 'Not recorded') {
       codCount++;
       codRevenueBDT += o.totalAmountBDT;
     }
@@ -5287,7 +5286,8 @@ export function buildMessengerChatUrl(
 ): string {
   const message = buildMessageCopy(templateType, params);
   const encoded = encodeURIComponent(message);
-  let handle = profileIdOrHandle || 'me';
+  if (!profileIdOrHandle) return 'https://www.messenger.com/'; // no Messenger ID: open Messenger, the owner picks the chat
+  let handle = profileIdOrHandle;
   handle = handle.replace(/^https?:\/\/m\.me\//, '').replace(/^m\.me\//, '').replace(/^https?:\/\/www\.facebook\.com\//, '');
   return `https://m.me/${handle}?text=${encoded}`;
 }
@@ -5327,7 +5327,8 @@ export function buildFCommerceDispatchUrl(
   );
 
   if (targetChannel === 'sms') {
-    const phone = order.smsPhone || order.whatsappPhone || '+8801700000000';
+    // Never invent a recipient: with no number the SMS app opens and the owner picks the contact.
+    const phone = order.smsPhone || order.whatsappPhone || '';
     return {
       url: buildSmsDispatchUrl(phone, templateType, params),
       channel: 'Phone SMS',
@@ -5336,7 +5337,7 @@ export function buildFCommerceDispatchUrl(
   }
 
   if (targetChannel === 'email') {
-    const email = order.customerEmail || `${order.customerName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@gmail.com`;
+    const email = order.customerEmail || '';
     return {
       url: buildEmailDispatchUrl(email, templateType, params),
       channel: 'Email',
@@ -5345,7 +5346,7 @@ export function buildFCommerceDispatchUrl(
   }
 
   if (targetChannel === 'messenger') {
-    const rawHandle = order.facebookProfileId || order.customerName.toLowerCase().replace(/\s+/g, '.');
+    const rawHandle = order.facebookProfileId || '';
     const cleanHandle = rawHandle.replace(/^https?:\/\/m\.me\//, '').replace(/^m\.me\//, '').replace(/^https?:\/\/www\.facebook\.com\//, '');
     return {
       url: buildMessengerChatUrl(cleanHandle, templateType, params),
@@ -5506,29 +5507,8 @@ export const convertWhatsAppShopOrdersToRawRows = convertWhatsAppShopToRaw;
  * Converts generic RawTransaction rows (from POS Systems, Daraz BD, Pickaboo, WooCommerce, Shopify, or Excel)
  * into standardized Omni-Channel FCommerceOrder objects with 4-channel fallback (WhatsApp, Phone SMS, Email, Messenger).
  */
-const BD_DISTRICTS_FALLBACK = [
-  'Dhaka (Uttara)',
-  'Dhaka (Dhanmondi)',
-  'Dhaka (Mirpur)',
-  'Dhaka (Gulshan)',
-  'Chattogram (Agrabad)',
-  'Sylhet (Zindabazar)',
-  'Rajshahi (Shaheb Bazar)',
-  'Khulna (Sonadanga)',
-  'Cumilla (Kandirpar)',
-  'Gazipur (Tongi)',
-];
-
-const BD_COURIERS_FALLBACK = [
-  'Pathao Courier',
-  'Steadfast',
-  'RedX',
-  'Paperfly',
-  'Sundarban Courier',
-];
-
 export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCommerceOrder[] {
-  return rows.map((r, idx) => {
+  const lines = rows.map((r, idx) => {
     const rawWaPhoneVal =
       r['WhatsApp Phone'] ??
       r.whatsapp_phone ??
@@ -5586,6 +5566,7 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
       new Date().toISOString().slice(0, 10)
     );
 
+    const customerId = String(r.CustomerID || r['Customer ID'] || r.customer_id || r.user_id || '').trim();
     const customerName = String(
       r['Customer Name'] ||
       r.customer_name ||
@@ -5593,7 +5574,7 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
       r['Recipient Name'] ||
       r.buyer_name ||
       r.name ||
-      'Customer ' + (idx + 1)
+      (customerId ? `Customer ${customerId}` : 'Customer ' + (idx + 1))
     );
 
     const items = String(
@@ -5623,7 +5604,7 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
 
     const unitPrice = !isNaN(parsedUnitPrice) && parsedUnitPrice > 0
       ? parsedUnitPrice
-      : (!isNaN(parsedTotal) && parsedTotal > 0 ? parsedTotal / quantity : 500);
+      : (!isNaN(parsedTotal) && parsedTotal > 0 ? parsedTotal / quantity : 0);
 
     const totalAmountBDT = !isNaN(parsedTotal) && parsedTotal > 0
       ? parsedTotal
@@ -5656,25 +5637,15 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
         paymentMethod = 'Cash on Delivery (COD)';
       }
     } else {
-      // Deterministic realistic payment mix when CSV omits payment_method column (e.g. Daraz/Pickaboo/POS export)
-      const mod = idx % 10;
-      if (mod === 0 || mod === 3) paymentMethod = 'bKash Merchant';
-      else if (mod === 1) paymentMethod = 'bKash Personal';
-      else if (mod === 4) paymentMethod = 'Nagad';
-      else if (mod === 8) paymentMethod = 'Bank Transfer';
-      else paymentMethod = 'Cash on Delivery (COD)';
+      paymentMethod = 'Not recorded'; // the file has no payment column; do not invent one
     }
 
     const explicitAdvance = r['Advance Paid (BDT)'] ?? r.advance_paid ?? r.AdvancePaid;
     let advancePaidBDT = 0;
     if (explicitAdvance !== undefined && explicitAdvance !== '') {
       advancePaidBDT = Number(explicitAdvance) || 0;
-    } else {
-      if (paymentMethod !== 'Cash on Delivery (COD)') {
-        advancePaidBDT = totalAmountBDT;
-      } else {
-        advancePaidBDT = idx % 3 === 0 ? Math.min(150, totalAmountBDT) : 0;
-      }
+    } else if (paymentMethod !== 'Cash on Delivery (COD)' && paymentMethod !== 'Not recorded') {
+      advancePaidBDT = totalAmountBDT; // a recorded prepaid method means paid in full
     }
 
     const dueAmountBDT = Math.max(0, totalAmountBDT - advancePaidBDT);
@@ -5685,22 +5656,20 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
       r.DeliveryDistrict ||
       r.district ||
       r.city ||
-      BD_DISTRICTS_FALLBACK[idx % BD_DISTRICTS_FALLBACK.length]
+      'Not recorded'
     );
     const courierPartner = (
       r['Courier Partner'] ||
       r.courier_partner ||
       r.CourierPartner ||
-      (rawChannelStr.includes('Pickaboo')
-        ? 'Pickaboo Express'
-        : BD_COURIERS_FALLBACK[idx % BD_COURIERS_FALLBACK.length])
+      (rawChannelStr.includes('Pickaboo') ? 'Pickaboo Express' : 'Not recorded')
     ) as any;
     const trackingNumber = String(
       r['Tracking Number'] ||
       r['Courier Tracking No'] ||
       r.tracking_number ||
       r.TrackingNumber ||
-      `TRK-${100000 + idx}`
+      ''
     );
     const customerNotes = String(r['Customer Notes'] || r.CustomerNotes || r.notes || '');
 
@@ -5726,23 +5695,9 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
       preferredChannel = hasPhone ? 'sms' : (hasEmail ? 'email' : 'whatsapp');
       finalWaPhone = undefined;
     } else if (rawChannelLower.includes('daraz') || rawChannelLower.includes('pickaboo') || rawChannelLower.includes('marketplace') || rawChannelLower.includes('e-commerce') || rawChannelLower.includes('shopify')) {
-      // Multi-channel Marketplace / Retail Store mix (e.g. Daraz BD / Pickaboo / POS CSV):
-      // Demonstrate how customers are reached across Phone SMS (POS/Mobile), Email, and WhatsApp
-      const reachMod = idx % 10;
-      if (reachMod === 1 || reachMod === 4 || reachMod === 7) {
-        // Customer has Phone Number only (no WhatsApp/Facebook) -> Reach via Direct Phone SMS
-        orderChannel = reachMod === 1 ? 'POS / Offline Store' : 'E-Commerce / Marketplace';
-        preferredChannel = 'sms';
-        finalWaPhone = undefined;
-      } else if (reachMod === 2 || reachMod === 8) {
-        // Customer reached via Personalized Email Offer
-        orderChannel = 'E-Commerce / Marketplace';
-        preferredChannel = 'email';
-        finalWaPhone = undefined;
-      } else {
-        orderChannel = 'E-Commerce / Marketplace';
-        preferredChannel = 'whatsapp';
-      }
+      // Marketplace order: reach the customer through the contact details the file actually has.
+      orderChannel = 'E-Commerce / Marketplace';
+      preferredChannel = hasPhone ? 'whatsapp' : hasEmail ? 'email' : 'messenger';
     } else if (!hasPhone && hasEmail && !rawHandle) {
       orderChannel = 'E-Commerce / Marketplace';
       preferredChannel = 'email';
@@ -5750,7 +5705,7 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
       orderChannel = 'Facebook Messenger';
       preferredChannel = 'messenger';
       finalWaPhone = undefined;
-      finalMessenger = rawHandle || `m.me/${customerName.toLowerCase().replace(/[^a-z0-9]/g, '.')}.${orderId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      finalMessenger = rawHandle || undefined; // a guessed m.me handle can belong to a stranger
     }
 
     return {
@@ -5784,6 +5739,20 @@ export function convertRawRowsToWhatsAppShopOrders(rows: RawTransaction[]): FCom
       ),
     };
   });
+
+  // One order per order ID: line-item files (one row per product) are summed; returns and zero-value orders are dropped.
+  const orders = new Map<string, FCommerceOrder>();
+  for (const line of lines) {
+    const o = orders.get(line.orderId);
+    if (!o) { orders.set(line.orderId, line); continue; }
+    o.quantity += line.quantity;
+    o.totalAmountBDT += line.totalAmountBDT;
+    o.advancePaidBDT += line.advancePaidBDT;
+    o.dueAmountBDT += line.dueAmountBDT;
+    o.unitPrice = o.quantity ? o.totalAmountBDT / o.quantity : o.unitPrice;
+    if (o.items.length < 120 && !o.items.includes(line.items)) o.items += `, ${line.items}`;
+  }
+  return [...orders.values()].filter((o) => o.totalAmountBDT > 0);
 }
 
 

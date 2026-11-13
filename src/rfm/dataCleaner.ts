@@ -1,3 +1,4 @@
+import Papa from 'papaparse';
 import { RawTransaction } from './types';
 import { normalizePhoneNumber, parseDate } from './identityStitcher';
 
@@ -259,4 +260,17 @@ export function autoCleanDataset(rows: RawTransaction[], opts: CleanOptions = {}
 export function csvSafe(value: unknown): string {
   const s = value === undefined || value === null ? '' : String(value);
   return /^[=+\-@\t\r]/.test(s) && !/^[-+]?\d*\.?\d+$/.test(s) ? `'${s}` : s;
+}
+
+/**
+ * Save rows as a CSV file (browser only): proper quoting, formula guard and a BOM so Excel reads Bangla.
+ * A Blob, not a data: URL, so a "#" in the data cannot cut the file short.
+ */
+export function downloadCsv(filename: string, rows: unknown[][]): void {
+  const blob = new Blob(['﻿' + Papa.unparse(rows.map((r) => r.map((v) => csvSafe(v))))], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }

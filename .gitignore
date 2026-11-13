@@ -24,6 +24,7 @@ thesis/data/olist/
 thesis/data/thelook/
 thesis/data/retail2/
 thesis/data/cdnow/
+thesis/data/amazon/
 
 # Jupyter autosave copies
 .ipynb_checkpoints/
@@ -31,3 +32,7 @@ thesis/data/cdnow/
 # The thesis paper (PDF and LaTeX, including generated .tex tables) stays local and is never pushed
 *.pdf
 *.tex
+
+# Offline AI writer: the trained model and its training data (built locally, see scripts/writer; too large for GitHub)
+public/models/
+scripts/writer/out/

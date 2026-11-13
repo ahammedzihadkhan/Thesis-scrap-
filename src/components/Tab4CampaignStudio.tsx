@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { CustomerRFMTD, PersonaType, CampaignConfig } from '../rfm/types';
 import { PERSONA_METAS, EARLY_SEGMENT_METAS } from '../rfm/mlClustering';
+import { DEFAULT_CAMPAIGN_CONFIGS } from '../rfm/campaignDefaults';
 import {
   MessageSquare,
   Mail,
@@ -33,18 +34,28 @@ import {
   generateBulkRecommendations,
   CustomerRecommendationProfile,
   BANGLADESHI_CATALOG,
+  ProductCatalogItem,
 } from '../rfm/recommendationEngine';
+import { downloadCsv } from '../rfm/dataCleaner';
+import { customerFacts, factsToInput, topProducts, WRITER_TONES, type WriterTone } from '../ai/messageFacts';
+import { writeMessage, writerInstalled, type Written } from '../ai/localWriter';
+
+// AI messages by the exact facts they were written from: they survive tab switches until the page reloads, and a
+// message written for an older code, price, shop name or tone can never be shown (its facts no longer match).
+const aiWritten = new Map<string, Written>();
 
 interface Tab4CampaignStudioProps {
   customers: CustomerRFMTD[];
   currencySymbol: string;
   cleanedRows?: CleanedTransaction[];
+  catalog?: ProductCatalogItem[];
 }
 
 export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
   customers,
   currencySymbol,
   cleanedRows = [],
+  catalog = BANGLADESHI_CATALOG,
 }) => {
   const [shopName, setShopName] = useState('Artisan Retail & F-Commerce Hub');
   const [activePersonaTab, setActivePersonaTab] = useState<PersonaType>('Champions (VIP Loyalists)');
@@ -63,46 +74,13 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
     return generateBulkRecommendations(
       customers,
       cleanedRows,
-      BANGLADESHI_CATALOG,
+      catalog,
       currencySymbol
     );
-  }, [customers, cleanedRows, currencySymbol]);
+  }, [customers, cleanedRows, catalog, currencySymbol]);
 
   // Editable Campaign configs per persona with personalized product merge tags
-  const [campaignConfigs, setCampaignConfigs] = useState<Record<PersonaType, CampaignConfig>>({
-    'Champions (VIP Loyalists)': {
-      persona: 'Champions (VIP Loyalists)',
-      discountCode: 'VIP-CURATED20',
-      discountValue: '20% VIP Early Access',
-      headline: 'Private VIP Early Access',
-      messageTemplate:
-        'Hi {name}! 🌟 As our top VIP buyer at {shop_name}, we curated "{suggested_product}" at 20% privilege ({suggested_price}) with code {discount_code}. Reserve yours today!',
-    },
-    'Loyal & Promising Regulars': {
-      persona: 'Loyal & Promising Regulars',
-      discountCode: 'PAIR-IT15',
-      discountValue: '15% Off Next Purchase',
-      headline: 'Loyalty Reward Voucher',
-      messageTemplate:
-        'Hello {name}! Complete your set at {shop_name} with "{suggested_product}" for only {suggested_price} with code {discount_code}.',
-    },
-    'High-Potential / At-Risk Guests': {
-      persona: 'High-Potential / At-Risk Guests',
-      discountCode: 'REVIVE-GIFT15',
-      discountValue: '15% Comeback Treat',
-      headline: 'We Miss You!',
-      messageTemplate:
-        'Hi {name}, we miss you at {shop_name}! It’s been {recency} days since your last order. Here is 15% off "{suggested_product}" ({suggested_price}) with code {discount_code}!',
-    },
-    'Hibernating / Lost Guests': {
-      persona: 'Hibernating / Lost Guests',
-      discountCode: 'WINBACK25',
-      discountValue: '25% Win-Back Flash',
-      headline: '25% Exclusive Re-Activation',
-      messageTemplate:
-        'Hey {name}, we noticed you haven’t shopped at {shop_name} recently. Take 25% off "{suggested_product}" (now {suggested_price}) with code {discount_code} and see what’s new!',
-    },
-  });
+  const [campaignConfigs, setCampaignConfigs] = useState<Record<PersonaType, CampaignConfig>>(DEFAULT_CAMPAIGN_CONFIGS);
 
   const handleConfigChange = (
     persona: PersonaType,
@@ -118,8 +96,78 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
     }));
   };
 
+  // Offline AI writer (scripts/writer): a message per customer from their own buying facts, fact-checked before use.
+  const [aiInstalled, setAiInstalled] = useState<boolean | null>(null);
+  const [aiTone, setAiTone] = useState<WriterTone>('friendly');
+  const [aiVersion, setAiVersion] = useState(0);
+  const [aiRun, setAiRun] = useState<{ done: number; total: number; kept: number; running: boolean; started: number; error?: string } | null>(null);
+  const aiStop = useRef(false);
+  const boughtMap = useMemo(() => topProducts(cleanedRows), [cleanedRows]);
+  useEffect(() => {
+    writerInstalled().then(setAiInstalled);
+    return () => { aiStop.current = true; };
+  }, []);
+  // Stop writing when the facts change (codes, prices, shop name, tone, data); finished messages stay in aiWritten.
+  useEffect(() => {
+    aiStop.current = true;
+    setAiRun(null);
+  }, [customers, campaignConfigs, shopName, currencySymbol, recommendationsMap, aiTone]);
+
+  const writerInput = (c: CustomerRFMTD) => {
+    const rec = recommendationsMap.get(c.customerKey)?.primaryRecommendation;
+    const facts = customerFacts(c, {
+      tone: aiTone,
+      shop: shopName,
+      buys: boughtMap.get(c.customerKey) ?? [],
+      config: campaignConfigs[c.persona || 'High-Potential / At-Risk Guests'],
+      suggest: rec?.productName,
+      originalPrice: rec?.originalPrice,
+      currency: currencySymbol,
+      reason: rec?.suggestionKind,
+      basis: rec?.basisProduct,
+    });
+    return { facts, key: factsToInput(facts) };
+  };
+
+  const writeWithAi = async () => {
+    aiStop.current = false;
+    const list = filteredQueue;
+    const started = Date.now();
+    let kept = 0;
+    setAiRun({ done: 0, total: list.length, kept, running: true, started });
+    for (const [i, c] of list.entries()) {
+      const { facts, key } = writerInput(c);
+      try {
+        const written = aiWritten.get(key) ?? (await writeMessage(facts)); // already written: keep it
+        if (aiStop.current) break;
+        if (written) {
+          kept++;
+          aiWritten.set(key, written);
+          setAiVersion((v) => v + 1);
+        }
+      } catch (err) {
+        setAiRun({ done: i, total: list.length, kept, running: false, started, error: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+      setAiRun({ done: i + 1, total: list.length, kept, running: true, started });
+    }
+    setAiRun((r) => r && { ...r, running: false });
+  };
+
+  // customerKey -> AI message, for the customers whose current facts have one.
+  const aiOverrides = useMemo(() => {
+    const out = new Map<string, string>();
+    if (aiWritten.size) for (const c of customers) {
+      const w = aiWritten.get(writerInput(c).key);
+      if (w) out.set(c.customerKey, w.text);
+    }
+    return out;
+  }, [aiVersion, customers, campaignConfigs, shopName, currencySymbol, recommendationsMap, aiTone, boughtMap]);
+
+  const formatMessage = (c: CustomerRFMTD) => aiOverrides.get(c.customerKey) ?? templateMessage(c);
+
   // Build personalized message for a customer with dynamic suggestion tags
-  const formatMessage = (c: CustomerRFMTD) => {
+  const templateMessage = (c: CustomerRFMTD) => {
     const persona = c.persona || 'High-Potential / At-Risk Guests';
     const cfg = campaignConfigs[persona];
     const name = c.customerName
@@ -211,39 +259,30 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
       const cleanPhone = c.phone ? c.phone.replace(/[^\d]/g, '') : '';
       const intlPhone = cleanPhone.length === 11 && cleanPhone.startsWith('01') ? `88${cleanPhone}` : cleanPhone;
       const waUrl = intlPhone ? `https://wa.me/${intlPhone}?text=${encodeURIComponent(msg)}` : '';
-      const messengerHandle = c.messengerId || (c.customerKey.startsWith('cust_') ? `m.me/buyer_${c.customerKey.replace('cust_', '')}` : `m.me/${c.customerKey.toLowerCase().replace(/[^a-z0-9._-]/g, '.')}`);
-      const cleanHandle = messengerHandle.replace(/^https?:\/\/m\.me\//, '').replace(/^m\.me\//, '');
-      const messengerUrl = `https://m.me/${cleanHandle}?text=${encodeURIComponent(msg)}`;
-      const targetChannel = intlPhone ? 'WhatsApp' : 'Facebook Messenger';
-      const dispatchUrl = intlPhone ? waUrl : messengerUrl;
-      const targetIdentifier = intlPhone || `m.me/${cleanHandle}`;
+      // Only a Messenger ID that is in the data; a guessed m.me handle can belong to a stranger.
+      const cleanHandle = (c.messengerId || '').replace(/^https?:\/\/m\.me\//, '').replace(/^m\.me\//, '');
+      const messengerUrl = cleanHandle ? `https://m.me/${cleanHandle}?text=${encodeURIComponent(msg)}` : '';
+      const targetChannel = intlPhone ? 'WhatsApp' : cleanHandle ? 'Facebook Messenger' : c.email ? 'Email' : 'No contact details';
 
       return [
-        `"${c.customerKey}"`,
-        `"${persona}"`,
-        c.isGuest ? '"Guest"' : '"Account"',
-        `"${targetChannel}"`,
-        `"${targetIdentifier}"`,
-        `"${c.phone || ''}"`,
-        `"m.me/${cleanHandle}"`,
-        `"${c.email || ''}"`,
+        c.customerKey,
+        persona,
+        c.isGuest ? 'Guest' : 'Account',
+        targetChannel,
+        intlPhone || (cleanHandle && `m.me/${cleanHandle}`) || c.email || '',
+        c.phone || '',
+        cleanHandle && `m.me/${cleanHandle}`,
+        c.email || '',
         c.recency,
         c.frequency,
         c.monetary,
-        `"${code}"`,
-        `"${dispatchUrl}"`,
-        `"${msg.replace(/"/g, '""')}"`,
-      ].join(',');
+        code,
+        waUrl || messengerUrl,
+        msg,
+      ];
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `FCommerce_Campaign_Queue_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsv(`FCommerce_Campaign_Queue_${new Date().toISOString().slice(0, 10)}.csv`, [headers, ...rows]);
 
     confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
   };
@@ -442,12 +481,12 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
                 </span>
               </div>
               <textarea
-                rows={3}
+                rows={6}
                 value={activeCfg.messageTemplate}
                 onChange={(e) =>
                   handleConfigChange(activePersonaTab, 'messageTemplate', e.target.value)
                 }
-                className="w-full bg-slate-50/80 border border-slate-200 rounded-lg p-3 text-xs text-slate-800 leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-emerald-500 resize-none font-mono"
+                className="w-full bg-slate-50/80 border border-slate-200 rounded-lg p-3 text-xs text-slate-800 leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-emerald-500 resize-y font-mono"
               />
 
               {/* Quick Token Pills */}
@@ -572,7 +611,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
             </div>
 
             <div className="mt-3 pt-2 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Target: <strong className="text-slate-700">{previewCustomer.phone || previewCustomer.messengerId || previewCustomer.customerKey}</strong></span>
+              <span>Target: <strong className="text-slate-700">{previewCustomer.phone || previewCustomer.messengerId || previewCustomer.email || 'no phone or Messenger ID'}</strong></span>
               <button
                 onClick={() => copyMessage(formatMessage(previewCustomer), 'preview')}
                 className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900 cursor-pointer font-medium"
@@ -596,6 +635,77 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
         selectedSegmentFilter={selectedPersonaFilter}
         onApplySegmentFilter={(seg) => setSelectedPersonaFilter(seg)}
       />
+
+      {/* Offline AI writer: one message per customer from their buying habits, checked against the data */}
+      <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-amber-500" /> Offline AI writer
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
+              Writes a different message for each customer from what they buy, how often they order and when they last
+              ordered, in English. It runs on this computer's CPU and sends nothing anywhere. Every message is checked: the product,
+              price, offer and code must match your data and nothing may be invented, otherwise the normal template is used.
+            </p>
+          </div>
+          {aiInstalled === false ? (
+            <p className="text-xs text-slate-500 max-w-xs">
+              Not installed on this computer. See “Offline AI writer” in the README to build it (about 2 hours on a laptop CPU).
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <select
+                value={aiTone}
+                onChange={(e) => setAiTone(e.target.value as WriterTone)}
+                disabled={Boolean(aiRun?.running)}
+                aria-label="Message tone"
+                className="bg-white border border-slate-200 text-xs rounded-lg px-2.5 py-1.5 font-medium text-slate-700"
+              >
+                {WRITER_TONES.map((t) => (
+                  <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)} tone</option>
+                ))}
+              </select>
+              {aiRun?.running ? (
+                <button onClick={() => { aiStop.current = true; }} className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer">
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={writeWithAi}
+                  disabled={!aiInstalled || filteredQueue.length === 0}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50"
+                >
+                  Write {filteredQueue.length.toLocaleString()} messages with AI
+                </button>
+              )}
+              {aiOverrides.size > 0 && !aiRun?.running && (
+                <button
+                  onClick={() => { aiWritten.clear(); setAiVersion((v) => v + 1); setAiRun(null); }}
+                  className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                >
+                  Use templates again
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {aiRun && (
+          <div className="mt-3 text-xs text-slate-600" aria-live="polite">
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(100 * aiRun.done) / Math.max(1, aiRun.total)}%` }} />
+            </div>
+            <p className="mt-1.5">
+              {aiRun.running ? `Writing ${aiRun.done} of ${aiRun.total}…` : `Finished ${aiRun.done} of ${aiRun.total}.`}{' '}
+              {aiRun.kept} written by AI
+              {aiRun.done > aiRun.kept && `, ${aiRun.done - aiRun.kept} kept the template (no draft passed the check)`}.
+              {aiRun.running && aiRun.done > 0 &&
+                ` About ${Math.max(1, Math.round(((Date.now() - aiRun.started) / aiRun.done) * (aiRun.total - aiRun.done) / 60000))} min left; the first 25 in the list are written first.`}
+            </p>
+            {aiRun.error && <p className="text-rose-600 mt-1">The AI writer stopped: {aiRun.error}</p>}
+          </div>
+        )}
+      </div>
 
       {/* Live Campaign Dispatch Queue & Customer Table */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
@@ -701,11 +811,11 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
                   const intlPhone = cleanPhone.length === 11 && cleanPhone.startsWith('01') ? `88${cleanPhone}` : cleanPhone;
                   const waUrl = intlPhone ? `https://wa.me/${intlPhone}?text=${encodeURIComponent(message)}` : '';
                   
-                  const rawMessengerHandle = c.messengerId || (c.customerKey.startsWith('cust_') ? `m.me/buyer_${c.customerKey.replace('cust_', '')}` : `m.me/${c.customerKey.toLowerCase().replace(/[^a-z0-9._-]/g, '.')}`);
-                  const cleanMessengerHandle = rawMessengerHandle.replace(/^https?:\/\/m\.me\//, '').replace(/^m\.me\//, '').replace(/^https?:\/\/www\.facebook\.com\//, '');
-                  const messengerUrl = `https://m.me/${cleanMessengerHandle}?text=${encodeURIComponent(message)}`;
-                  
-                  const isMessengerOnly = !intlPhone;
+                  // Only a Messenger ID that is in the data; a guessed m.me handle can belong to a stranger.
+                  const cleanMessengerHandle = (c.messengerId || '').replace(/^https?:\/\/m\.me\//, '').replace(/^m\.me\//, '').replace(/^https?:\/\/www\.facebook\.com\//, '');
+                  const messengerUrl = cleanMessengerHandle ? `https://m.me/${cleanMessengerHandle}?text=${encodeURIComponent(message)}` : '';
+
+                  const isMessengerOnly = !intlPhone && Boolean(messengerUrl);
 
                   const mailtoUrl = c.email
                     ? `mailto:${c.email}?subject=${encodeURIComponent(
@@ -725,6 +835,8 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
                             <span>{c.phone}</span>
                             <span className="text-[9px] bg-emerald-50 text-emerald-800 px-1 rounded font-bold border border-emerald-200">WA</span>
                           </div>
+                        ) : !cleanMessengerHandle ? (
+                          <div className="text-[10px] text-slate-500 mt-0.5">{c.email ? 'E-mail only' : 'No phone or Messenger ID'}</div>
                         ) : (
                           <div className="mt-0.5">
                             <div className="text-[11px] text-blue-700 font-semibold flex items-center gap-1">
@@ -741,9 +853,15 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
 
                       <td className="py-2.5 px-3">
                         {c.earlySegment ? (
-                          <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200" style={{ color: EARLY_SEGMENT_METAS[c.earlySegment].color }}>
-                            New · {EARLY_SEGMENT_METAS[c.earlySegment].name}
-                          </span>
+                          <>
+                            <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200" style={{ color: EARLY_SEGMENT_METAS[c.earlySegment].color }}>
+                              New · {EARLY_SEGMENT_METAS[c.earlySegment].name}
+                            </span>
+                            {/* A new customer's group becomes reliable after about 90 days of history (thesis RQ4). */}
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              {(c.tenureDays ?? 0) <= 90 ? `history ${c.tenureDays ?? 0}/90 days` : 'only 1–2 orders so far'}
+                            </div>
+                          </>
                         ) : (
                           <span
                             className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md"
@@ -800,7 +918,12 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
                       </td>
 
                       <td className="py-2.5 px-4 max-w-[240px]">
-                        <p className="text-[11px] text-slate-700 line-clamp-2 leading-relaxed bg-slate-50 p-1.5 rounded border border-slate-200/80">
+                        {aiOverrides.has(c.customerKey) && (
+                          <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1 rounded mb-0.5">
+                            <Sparkles className="w-2.5 h-2.5" /> AI · facts checked
+                          </span>
+                        )}
+                        <p className="text-[11px] text-slate-700 max-h-32 overflow-y-auto leading-relaxed bg-slate-50 p-1.5 rounded border border-slate-200/80 whitespace-pre-line">
                           {message}
                         </p>
                       </td>
@@ -819,8 +942,8 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
                               <MessageSquare className="w-3.5 h-3.5" />
                               <span>WhatsApp</span>
                             </a>
-                          ) : (
-                            /* User explicitly requested: if whatsapp number is missing, target them with messenger id or facebook id and send message to messenger */
+                          ) : messengerUrl && (
+                            /* No WhatsApp number: use the customer's Messenger ID from the data */
                             <a
                               href={messengerUrl}
                               target="_blank"
@@ -887,6 +1010,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
         currencySymbol={currencySymbol}
         campaignConfigs={campaignConfigs}
         recommendationsMap={recommendationsMap}
+        messageOverrides={aiOverrides}
       />
 
       <WhatsAppBulkExportModal
@@ -897,12 +1021,13 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
         currencySymbol={currencySymbol}
         campaignConfigs={campaignConfigs}
         recommendationsMap={recommendationsMap}
+        messageOverrides={aiOverrides}
       />
 
       {/* Detailed Customer Personalized Recommendation & Offer Modal */}
       {selectedRecCustomer && recommendationsMap.get(selectedRecCustomer.customerKey) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="px-5 py-3.5 bg-gradient-to-r from-emerald-800 to-teal-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">

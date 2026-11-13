@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  ArrowRight, BrainCircuit, CheckCircle2, FileSpreadsheet, Github, Laptop, Lock, MessageSquareShare, PhoneCall, ShieldCheck, Sparkles, Users, Wand2, WifiOff,
+  ArrowRight, BrainCircuit, CheckCircle2, FileSpreadsheet, Github, Laptop, LineChart, Lock, MessageSquareShare, PhoneCall, ShieldCheck, Sparkles, Users, Wand2, WifiOff,
 } from 'lucide-react';
 
 interface Props {
@@ -13,6 +13,8 @@ const features = [
   { icon: BrainCircuit, title: 'Five-feature segmentation', text: 'Recency, Frequency, Monetary value, buying rhythm and basket breadth, clustered with K-Means into Champions, Loyal, At-Risk and Hibernating.' },
   { icon: Users, title: 'Early-stage customers', text: 'New and low-history buyers get their own three groups and a welcome-style message, because our research shows a normal segment is not yet reliable in the first 60–90 days.' },
   { icon: MessageSquareShare, title: 'Send to everyone', text: 'One offer per group in English or Bangla. Go through customers one by one with WhatsApp or Messenger opening ready to send, or send automatically through the official WhatsApp Business API.' },
+  { icon: LineChart, title: 'Who will buy next', text: 'For every customer: the chance they are still a customer, their expected orders and spend in the next 30, 90 or 180 days, and the valuable customers slipping away.' },
+  { icon: Sparkles, title: 'Offline AI writer', text: 'A small model, fine-tuned for shop messages, writes a personal message for each customer on your own computer. Every message is fact-checked before use.' },
   { icon: ShieldCheck, title: 'Validated, not guessed', text: 'Live silhouette, Davies–Bouldin, bootstrap stability and a true out-of-sample repurchase test on your own data.' },
 ];
 

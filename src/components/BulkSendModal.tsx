@@ -14,6 +14,7 @@ interface Props {
   currencySymbol: string;
   campaignConfigs: Record<PersonaType, CampaignConfig>;
   recommendationsMap?: Map<string, CustomerRecommendationProfile>;
+  messageOverrides?: Map<string, string>; // AI-written messages by customer key
 }
 
 const CFG_KEY = 'kroypulse.waapi.v1';
@@ -25,7 +26,7 @@ const loadCfg = (): CloudApiConfig => {
   }
 };
 
-export const BulkSendModal: React.FC<Props> = ({ isOpen, onClose, customers, shopName, currencySymbol, campaignConfigs, recommendationsMap }) => {
+export const BulkSendModal: React.FC<Props> = ({ isOpen, onClose, customers, shopName, currencySymbol, campaignConfigs, recommendationsMap, messageOverrides }) => {
   const [segment, setSegment] = useState<PersonaType | 'All'>('All');
   const [mode, setMode] = useState<'queue' | 'auto'>('queue');
   const [index, setIndex] = useState(0);
@@ -47,8 +48,9 @@ export const BulkSendModal: React.FC<Props> = ({ isOpen, onClose, customers, sho
         currencySymbol,
         campaignConfigs,
         recommendationsMap,
+        messageOverrides,
       }).rows,
-    [customers, segment, shopName, currencySymbol, campaignConfigs, recommendationsMap]
+    [customers, segment, shopName, currencySymbol, campaignConfigs, recommendationsMap, messageOverrides]
   );
   const waRows = rows.filter((r) => r.channel === 'WhatsApp' && r.whatsapp_phone);
 
@@ -162,6 +164,8 @@ export const BulkSendModal: React.FC<Props> = ({ isOpen, onClose, customers, sho
                   </div>
                   <p className="text-xs text-slate-500">Tip: after pressing send in WhatsApp, come back to this tab and press the green button again.</p>
                 </>
+              ) : rows.length === 0 ? (
+                <p className="text-sm text-slate-600">No one in this group has a phone number or Messenger ID in your file.</p>
               ) : (
                 <p className="text-sm font-semibold text-emerald-700 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Finished — everyone in this group has been handled.</p>
               )}

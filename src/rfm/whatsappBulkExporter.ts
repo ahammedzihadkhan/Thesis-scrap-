@@ -50,6 +50,8 @@ export interface BulkExportOptions {
   currencySymbol: string;
   campaignConfigs: Record<PersonaType, CampaignConfig>;
   recommendationsMap?: Map<string, CustomerRecommendationProfile>;
+  /** Messages already written for a customer (offline AI writer, fact-checked); used instead of the template. */
+  messageOverrides?: Map<string, string>;
 }
 
 export interface BulkExportResult {
@@ -91,7 +93,8 @@ export function generateWhatsAppBulkExport(
 
     if (!e164) {
       skippedCount++;
-      if (onlyValidPhones && !isMessengerFormat) continue;
+      // Without a phone, only a Messenger ID from the data can reach the customer; never guess one.
+      if ((onlyValidPhones && !isMessengerFormat) || !(c.messengerId || c.facebookProfileId)) continue;
     } else {
       validCount++;
     }
@@ -110,7 +113,7 @@ export function generateWhatsAppBulkExport(
       : cfg.discountValue;
 
     // Build personalized message body with dynamic merge tags; early-stage customers get a lifecycle message (two-track).
-    const message = (c.earlySegment ? EARLY_SEGMENT_METAS[c.earlySegment].message : cfg.messageTemplate)
+    const message = options.messageOverrides?.get(c.customerKey) ?? (c.earlySegment ? EARLY_SEGMENT_METAS[c.earlySegment].message : cfg.messageTemplate)
       .replace(/{name}/g, customerName)
       .replace(/{shop_name}/g, shopName)
       .replace(/{discount_code}/g, cfg.discountCode)
@@ -121,8 +124,8 @@ export function generateWhatsAppBulkExport(
       .replace(/{personalized_offer}/g, personalizedOffer);
 
     const phoneStr = e164 || c.phone || '';
-    const cleanHandle = c.messengerId || c.facebookProfileId || (c.customerKey.startsWith('cust_') ? `m.me/buyer_${c.customerKey.replace('cust_', '')}` : `m.me/${c.customerKey.toLowerCase().replace(/\s+/g, '.')}`);
-    const messengerLink = cleanHandle.startsWith('http') ? cleanHandle : cleanHandle.startsWith('m.me') ? `https://${cleanHandle}` : `https://m.me/${cleanHandle}`;
+    const cleanHandle = c.messengerId || c.facebookProfileId || '';
+    const messengerLink = !cleanHandle ? '' : cleanHandle.startsWith('http') ? cleanHandle : cleanHandle.startsWith('m.me') ? `https://${cleanHandle}` : `https://m.me/${cleanHandle}`;
     const channelType = e164 ? 'WhatsApp' : 'Facebook Messenger';
     const dispatchUrl = e164
       ? `https://wa.me/${e164}?text=${encodeURIComponent(message)}`

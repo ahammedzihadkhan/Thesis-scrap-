@@ -12,6 +12,7 @@ interface WhatsAppBulkExportModalProps {
   currencySymbol: string;
   campaignConfigs: Record<PersonaType, CampaignConfig>;
   recommendationsMap?: Map<string, CustomerRecommendationProfile>;
+  messageOverrides?: Map<string, string>; // AI-written messages by customer key
 }
 
 // Plain-language labels; the file formats themselves are defined in rfm/types.ts.
@@ -43,6 +44,7 @@ export const WhatsAppBulkExportModal: React.FC<WhatsAppBulkExportModalProps> = (
   currencySymbol,
   campaignConfigs,
   recommendationsMap,
+  messageOverrides,
 }) => {
   const [selectedFormat, setSelectedFormat] = useState<WhatsAppBulkToolFormat>(SIMPLE.id);
   const [selectedSegment, setSelectedSegment] = useState<PersonaType | 'All'>('All');
@@ -59,8 +61,9 @@ export const WhatsAppBulkExportModal: React.FC<WhatsAppBulkExportModalProps> = (
         currencySymbol,
         campaignConfigs,
         recommendationsMap,
+        messageOverrides,
       }),
-    [customers, selectedFormat, selectedSegment, shopName, currencySymbol, campaignConfigs, recommendationsMap]
+    [customers, selectedFormat, selectedSegment, shopName, currencySymbol, campaignConfigs, recommendationsMap, messageOverrides]
   );
 
   if (!isOpen) return null;

@@ -1,0 +1,9 @@
+Template,Rewrites,Passed guard,Pass rate (%),Mean seconds per rewrite
+"Champions (VIP Loyalists)",9,0,0.0,22.73
+"Loyal & Promising Regulars",9,1,11.1,21.99
+"High-Potential / At-Risk Guests",9,0,0.0,16.53
+"Hibernating / Lost Guests",9,0,0.0,14.40
+"Promising Newcomers",9,6,66.7,18.50
+"Developing Newcomers",9,2,22.2,19.35
+"One-and-Done Risk",9,5,55.6,35.78
+All templates,63,14,22.2,21.33

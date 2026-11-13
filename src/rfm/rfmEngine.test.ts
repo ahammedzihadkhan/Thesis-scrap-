@@ -18,6 +18,7 @@ import {
   calculateHopkins,
   rankClustersToPersonas,
   assignEarlySegments,
+  segmentEstablished,
   runAlgorithmBenchmark,
   runTemporalHoldoutCheck,
   adjustedRandIndex,
@@ -37,6 +38,7 @@ import {
   calculateCampaignForecast,
   generateAllSegmentScenarios,
 } from './campaignForecaster';
+import { DEFAULT_CAMPAIGN_CONFIGS } from './campaignDefaults';
 
 test('Phone normalization handles +880, 88, 0088, and spaces', () => {
   assert.equal(normalizePhoneNumber('+8801711234567'), '01711234567');
@@ -67,6 +69,12 @@ test('Column auto-detection identifies UCI and WhatsApp headers', () => {
   assert.equal(waMapping.orderIdCol, 'order_id');
   assert.equal(waMapping.phoneCol, 'whatsapp_phone');
   assert.equal(waMapping.emailCol, 'customer_email');
+
+  // Amazon purchase export: no customer column is recognised, so the app must ask for it
+  const amzMapping = autoDetectColumnMapping(['Order Date', 'Purchase Price Per Unit', 'Quantity', 'Shipping Address State', 'Title', 'ASIN/ISBN (Product Code)', 'Category', 'Survey ResponseID']);
+  assert.equal(amzMapping.customerCol, '');
+  assert.equal(amzMapping.timestampCol, 'Order Date');
+  assert.equal(amzMapping.productCol, 'Title');
 });
 
 test('Identity stitching recovers repeat guest buyers and cleans invalid rows', () => {
@@ -226,6 +234,16 @@ test('Two-track: every early-stage customer gets one of three lifecycle segments
   // Below 9 early-stage customers the definitions are applied as rules.
   const tiny = assignEarlySegments([mk(0, 2, 200, 100, 5, 3, 'Early-Stage'), mk(1, 1, 20, 100, 20, 3, 'Early-Stage'), mk(2, 1, 300, 100, 300, 3, 'Early-Stage')]);
   assert.deepEqual(tiny.map((c) => c.earlySegment), ['Promising Newcomers', 'Developing Newcomers', 'One-and-Done Risk']);
+
+  // Regression: big one-order buyers must not be called "Promising" ahead of customers who already ordered again.
+  const mixed = assignEarlySegments([
+    ...[0, 1, 2, 3, 4].map((i) => mk(i, 2, 100, 300, 30, 4, 'Early-Stage')),
+    ...[5, 6, 7, 8, 9].map((i) => mk(i, 1, 20, 5000, 20, 4, 'Early-Stage')),
+    ...[10, 11, 12, 13, 14].map((i) => mk(i, 1, 250, 280, 250, 4, 'Early-Stage')),
+  ]);
+  assert.deepEqual(mixed.map((c) => c.earlySegment), [
+    ...Array(5).fill('Promising Newcomers'), ...Array(5).fill('Developing Newcomers'), ...Array(5).fill('One-and-Done Risk'),
+  ]);
 });
 
 test('WhatsApp Bulk Tool Export formats E.164 phone numbers and generates WATI/AiSensy CSV', () => {
@@ -610,6 +628,162 @@ test('Dynamic Data Hygiene Audit calculates purity rate, exclusion log, and reco
   assert.ok(stats.phoneIdentifiedCount > 0, 'Should track phone identified count');
 });
 
+// Regressions found by running the app on the real UCI Online Retail file.
+test('Established track: one-order buyers cannot empty the four groups (UCI showed groups of 4 and 1 customers)', () => {
+  const mk = (i: number, f: number, m: number, r: number, d: number, t: number, stage: 'Early-Stage' | 'Established'): CustomerRFMTD => ({
+    customerKey: `c${i}`, isGuest: false, firstPurchaseDate: new Date(), lastPurchaseDate: new Date(),
+    recency: r + (i % 5), frequency: f, monetary: m * (1 + (i % 7) / 50), avgOrderValue: m / f, interPurchaseTime: t,
+    basketDepth: d + (i % 4), isSinglePurchase: f === 1, tenureDays: 300, lifecycleStage: stage,
+  });
+  const customers = [
+    ...Array.from({ length: 10 }, (_, i) => mk(i, 30, 20000, 5, 200, 10, 'Established')),
+    ...Array.from({ length: 10 }, (_, i) => mk(10 + i, 10, 4000, 25, 100, 30, 'Established')),
+    ...Array.from({ length: 10 }, (_, i) => mk(20 + i, 5, 1500, 80, 60, 60, 'Established')),
+    ...Array.from({ length: 10 }, (_, i) => mk(30 + i, 4, 1000, 200, 20, 90, 'Established')),
+    ...Array.from({ length: 300 }, (_, i) => mk(40 + i, 1, 50 + (i * 97) % 5000, 1 + (i * 37) % 370, 1 + (i * 13) % 150, 0, 'Early-Stage')),
+  ];
+  const out = segmentEstablished(customers, 4).customers;
+  const established = (p: string) => out.filter((c) => c.lifecycleStage === 'Established' && c.persona === p).length;
+  for (const p of ['Champions (VIP Loyalists)', 'Loyal & Promising Regulars', 'High-Potential / At-Risk Guests', 'Hibernating / Lost Guests']) {
+    assert.equal(established(p), 10, p);
+  }
+  assert.ok(out.every((c) => c.persona), 'every customer gets the nearest group');
+});
+
+test('Real data: anonymous orders are dropped, no Messenger handle is invented, unreachable customers are not counted as reach', () => {
+  const rows = [
+    { InvoiceNo: '1', InvoiceDate: '2024-01-05 10:00', CustomerID: '17850', StockCode: 'A1', Description: 'T-LIGHT HOLDER', Quantity: '2', UnitPrice: '3' },
+    { InvoiceNo: '2', InvoiceDate: '2024-01-06 10:00', CustomerID: '', StockCode: 'A1', Description: 'T-LIGHT HOLDER', Quantity: '1', UnitPrice: '3' },
+  ];
+  const { cleanedRows, stats } = stitchAndCleanData(rows, autoDetectColumnMapping(Object.keys(rows[0])));
+  assert.equal(cleanedRows.length, 1);
+  assert.ok(stats.filteredRecords.some((f) => f.reason === 'no_customer_identity'));
+  assert.equal(cleanedRows[0].productName, 'T-LIGHT HOLDER');
+
+  const cust = { ...calculate5DRFM(cleanedRows).customerRFMList[0], persona: 'Champions (VIP Loyalists)' as const };
+  assert.equal(cust.messengerId, undefined, 'no m.me handle guessed from the customer ID');
+  const exported = generateWhatsAppBulkExport([cust], {
+    toolFormat: 'fcommerce_multichannel', segmentFilter: 'All', onlyValidPhones: false, shopName: 'Shop', currencySymbol: '£', campaignConfigs: DEFAULT_CAMPAIGN_CONFIGS,
+  });
+  assert.equal(exported.rows.length, 0, 'no phone and no Messenger ID: not in the send list');
+  assert.equal(calculateCampaignForecast([cust], { targetSegment: 'All', conversionRatePct: 50, predictedAOV: 100 }).projectedOrders, 0);
+});
+
+test("Shop catalog: suggestions name the shop's own best sellers, not demo products", async () => {
+  const { buildShopCatalog, generateBulkRecommendations } = await import('./recommendationEngine');
+  const line = (key: string, sku: string, name: string, price: number) => ({
+    orderId: key + sku, timestamp: new Date(), dateStr: '2024-01-01', unifiedKey: key, isGuest: false, sku, productName: name, quantity: 1, unitPrice: price, totalAmount: price,
+  });
+  const rows = [line('a', 'P1', 'LANTERN', 4), line('b', 'P1', 'LANTERN', 4), line('c', 'P1', 'LANTERN', 4), line('a', 'P2', 'MUG', 2), line('b', 'P2', 'MUG', 2), line('c', 'P3', 'BAG', 9)];
+  const catalog = buildShopCatalog(rows);
+  assert.deepEqual(catalog.map((c) => c.name), ['LANTERN', 'MUG', 'BAG']);
+  const customer: CustomerRFMTD = {
+    customerKey: 'c', isGuest: false, firstPurchaseDate: new Date(), lastPurchaseDate: new Date(), recency: 5, frequency: 2, monetary: 13,
+    avgOrderValue: 6.5, interPurchaseTime: 10, basketDepth: 2, isSinglePurchase: false, persona: 'Loyal & Promising Regulars',
+  };
+  // c has LANTERN and BAG; the two other LANTERN buyers also bought MUG, so MUG is suggested.
+  assert.equal(generateBulkRecommendations([customer], rows, catalog, '£').get('c')!.primaryRecommendation.productName, 'MUG');
+});
+
+test('Related products: an electronics buyer is offered what buyers of the same product chose, led by recent purchases', async () => {
+  const { buildShopCatalog, generateBulkRecommendations, exploresOtherTypes } = await import('./recommendationEngine');
+  const day = (n: number) => new Date(Date.UTC(2024, 0, 1) + n * 86_400_000);
+  const line = (key: string, name: string, price: number, n: number) => ({
+    orderId: key + name, timestamp: day(n), dateStr: '', unifiedKey: key, isGuest: false, sku: name, productName: name, quantity: 1, unitPrice: price, totalAmount: price,
+  });
+  const rows = [
+    ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => line(`s${i}`, 'Jamdani Saree', 3000, 300)), // the shop's best seller
+    ...[0, 1, 2].flatMap((i) => [line(`p${i}`, 'Smart Phone A10', 15000, 300), line(`p${i}`, 'Fast Charger 25W', 900, 300)]),
+    ...[0, 1, 2].flatMap((i) => [line(`r${i}`, 'Chinigura Rice 5kg', 700, 300), line(`r${i}`, 'Masoor Lentils 1kg', 150, 300)]),
+  ];
+  const keys = Array.from({ length: 12 }, (_, i) => `buyer${i}`);
+  const regular = keys.find((k) => !exploresOtherTypes(k))!;
+  const explorer = keys.find((k) => exploresOtherTypes(k))!;
+  // Both bought rice two years ago and the phone last week.
+  for (const k of [regular, explorer]) rows.push(line(k, 'Chinigura Rice 5kg', 700, 0), line(k, 'Smart Phone A10', 15000, 730));
+  const cust = (customerKey: string): CustomerRFMTD => ({
+    customerKey, isGuest: false, firstPurchaseDate: day(0), lastPurchaseDate: day(730), recency: 1, frequency: 2, monetary: 15700,
+    avgOrderValue: 7850, interPurchaseTime: 730, basketDepth: 2, isSinglePurchase: false, persona: 'Loyal & Promising Regulars',
+  });
+  const recs = generateBulkRecommendations([cust(regular), cust(explorer)], rows, buildShopCatalog(rows), 'Tk ');
+  const r = recs.get(regular)!.primaryRecommendation;
+  assert.deepEqual([r.productName, r.suggestionKind, r.basisProduct], ['Fast Charger 25W', 'bought together', 'Smart Phone A10'],
+    'the recent phone leads (not the old rice), and other phone buyers chose the charger over the more popular saree');
+  const e = recs.get(explorer)!.primaryRecommendation;
+  assert.equal(e.suggestionKind, 'something new');
+  assert.notEqual(e.productName, 'Fast Charger 25W', 'an explorer is offered another type of product');
+});
+
+test('Related products: about one customer in four is offered another type of product, always the same ones', async () => {
+  const { exploresOtherTypes } = await import('./recommendationEngine');
+  const keys = Array.from({ length: 4000 }, (_, i) => `customer-${i}`);
+  const share = keys.filter(exploresOtherTypes).length / keys.length;
+  assert.ok(share > 0.22 && share < 0.28, `share ${share}`);
+  assert.deepEqual(keys.slice(0, 50).map(exploresOtherTypes), keys.slice(0, 50).map(exploresOtherTypes));
+});
+
+test('Shop ledger: line items become one order, returns are dropped, nothing is invented', async () => {
+  const { convertRawRowsToWhatsAppShopOrders } = await import('../data/bangladeshiWhatsAppShopData');
+  const orders = convertRawRowsToWhatsAppShopOrders([
+    { InvoiceNo: '536365', InvoiceDate: '2010-12-01 08:26', CustomerID: '17850', Description: 'LANTERN', Quantity: '2', UnitPrice: '3' },
+    { InvoiceNo: '536365', InvoiceDate: '2010-12-01 08:26', CustomerID: '17850', Description: 'MUG', Quantity: '1', UnitPrice: '5' },
+    { InvoiceNo: 'C536379', InvoiceDate: '2010-12-01 09:41', CustomerID: '17850', Description: 'MUG', Quantity: '-1', UnitPrice: '5' },
+  ]);
+  assert.equal(orders.length, 1);
+  assert.equal(orders[0].totalAmountBDT, 11);
+  assert.equal(orders[0].customerName, 'Customer 17850');
+  assert.equal(orders[0].paymentMethod, 'Not recorded');
+  assert.equal(orders[0].deliveryDistrict, 'Not recorded');
+  assert.equal(orders[0].facebookProfileId, undefined);
+});
 
 
 
+
+
+test('Behaviour prediction: BG/NBD and Gamma-Gamma match the published CDNOW results and recover simulated customers', async () => {
+  const bm = await import('./behaviourModel');
+  assert.ok(Math.abs(bm.lnGamma(5) - Math.log(24)) < 1e-10);
+  assert.ok(Math.abs(bm.lnGamma(0.5) - Math.log(Math.sqrt(Math.PI))) < 1e-10);
+  // Fader, Hardie & Lee (2005): with r 0.243, alpha 4.414, a 0.793, b 2.426, a customer with x = 2, t_x = 30.43, T = 38.86
+  // weeks is expected to make 1.226 purchases in the next 39 weeks.
+  const paper = { r: 0.243, alpha: 4.414, a: 0.793, b: 2.426 };
+  const c = { customerKey: 'k', x: 2, tx: 30.43, T: 38.86, purchases: 3, avgValue: 1 };
+  assert.equal(bm.expectedPurchases(paper, c, 39).toFixed(3), '1.226');
+
+  // Simulate 1,500 customers from known BG/NBD parameters (weeks), then check the fit gets them back.
+  let seed = 7;
+  const rand = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+  const gamma = (shape: number, scale: number): number => { // Marsaglia-Tsang
+    if (shape < 1) return gamma(shape + 1, scale) * Math.pow(rand(), 1 / shape);
+    const d = shape - 1 / 3, k = 1 / Math.sqrt(9 * d);
+    for (;;) {
+      let x: number, v: number;
+      do { const u1 = rand(), u2 = rand(); x = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); v = 1 + k * x; } while (v <= 0);
+      v = v * v * v; const u = rand();
+      if (Math.log(u) < 0.5 * x * x + d - d * v + d * Math.log(v)) return d * v * scale;
+    }
+  };
+  const beta = (a: number, b: number) => { const x = gamma(a, 1); return x / (x + gamma(b, 1)); };
+  const truth = { r: 0.8, alpha: 6, a: 1.5, b: 4 };
+  const data = Array.from({ length: 1500 }, (_, i) => {
+    const lambda = gamma(truth.r, 1 / truth.alpha), p = beta(truth.a, truth.b), T = 52;
+    let t = 0, last = 0, x = 0;
+    for (;;) {
+      t += -Math.log(rand()) / lambda;
+      if (t > T) break;
+      x++; last = t;
+      if (rand() < p) break; // becomes inactive after this purchase
+    }
+    return { customerKey: String(i), x, tx: last, T, purchases: x + 1, avgValue: 1 };
+  });
+  const fit = bm.fitBgNbd(data);
+  for (const k of ['r', 'alpha', 'a', 'b'] as const) assert.ok(Math.abs(Math.log(fit[k] / truth[k])) < 0.5, `${k}: ${fit[k]}`);
+
+  assert.equal(bm.rocAuc([0.1, 0.4, 0.35, 0.8], [false, false, true, true]), 0.75);
+  // On the shop's own orders: a finite accuracy and predictions for every customer.
+  const { cleanedRows } = stitchAndCleanData(generateUCIOnlineRetailSample(), autoDetectColumnMapping(Object.keys(generateUCIOnlineRetailSample()[0])));
+  const model = bm.predictBehaviour(cleanedRows, 90);
+  assert.ok(model && model.customers.length > 0);
+  for (const p of model!.customers) assert.ok(p.pActive >= 0 && p.pActive <= 1 && p.expectedOrders >= 0 && Number.isFinite(p.predictedSpend));
+});

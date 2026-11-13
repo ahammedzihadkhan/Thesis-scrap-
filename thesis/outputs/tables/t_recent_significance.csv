@@ -1,0 +1,5 @@
+Dataset,Hypothesis,AUC difference,95% CI low,95% CI high,p,Holm p,Significant (Holm 5%)
+Open e-commerce 1.0,k=4 vs guest rule,0.342,0.312,0.373,<0.001,0.004,True
+Open e-commerce 1.0,k=4 vs k=2,0.063,0.05,0.077,<0.001,0.004,True
+Open e-commerce 1.0,k=4 vs quintile RFM,0.021,0.008,0.034,<0.001,0.004,True
+Open e-commerce 1.0,k=4 vs plain RFM k=4,-0.011,-0.021,-0.002,0.024,0.024,True

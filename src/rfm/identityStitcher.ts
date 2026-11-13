@@ -83,7 +83,7 @@ export function autoDetectColumnMapping(headers: string[]): ColumnMapping {
   const phoneCol = findMatch(['whatsappphone', 'whatsapp_phone', 'phone', 'mobile', 'whatsapp', 'cell', 'contact_no', 'telephone', 'ph']);
   const messengerCol = findMatch(['facebookprofileid', 'facebook_id', 'messenger_id', 'messenger', 'facebook', 'fbid', 'profile_id', 'm.me', 'page_id', 'fb']);
   const emailCol = findMatch(['email', 'customer_email', 'mail', 'user_email']);
-  const productCol = findMatch(['stockcode', 'stock_code', 'product_id', 'item_code', 'sku', 'description', 'product_name', 'item_name', 'items']);
+  const productCol = findMatch(['stockcode', 'stock_code', 'product_id', 'item_code', 'sku', 'description', 'product_name', 'item_name', 'items', 'title']);
   
   const quantityCol = findMatch(['quantity', 'qty', 'count', 'units', 'pieces']);
   const unitPriceCol = findMatch(['unitprice', 'unit_price', 'price', 'rate', 'item_price']);
@@ -310,7 +310,7 @@ export function stitchAndCleanData(
     // 2. Normalized Phone (WhatsApp)
     // 3. Normalized Messenger ID / Facebook Handle (F-Commerce Fallback when phone is missing!)
     // 4. Normalized Email
-    // 5. Guest fallback to order ID
+    // Orders with none of these cannot be linked to a customer or messaged, so they are dropped (as in the thesis notebook).
     let unifiedKey = '';
     let isGuest = false;
 
@@ -326,11 +326,18 @@ export function stitchAndCleanData(
       unifiedKey = `email_${normEmail}`;
       isGuest = true;
     } else {
-      unifiedKey = `guest_order_${orderIdStr}`;
-      isGuest = true;
+      invalidCount++;
+      filteredRecords.push({
+        orderId: orderIdStr,
+        reason: 'no_customer_identity',
+        reasonLabel: 'No customer ID, phone, Messenger ID or e-mail',
+        rawSnippet: JSON.stringify(r).slice(0, 120),
+      });
+      continue;
     }
 
     const sku = mapping.productCol ? String(r[mapping.productCol] || `sku_${orderIdStr}`).trim() : `order_${orderIdStr}`;
+    const productName = String(r.Description || r.product_name || r['Product Name'] || r.item_name || r['Item Name'] || r.product || '').trim();
 
     cleanedRows.push({
       orderId: orderIdStr,
@@ -349,6 +356,7 @@ export function stitchAndCleanData(
       unifiedKey,
       isGuest,
       sku,
+      productName: productName || undefined,
       quantity: qty,
       unitPrice,
       totalAmount,

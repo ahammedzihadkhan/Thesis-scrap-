@@ -9,8 +9,12 @@ import { ScalerParams, transformSingle } from '../rfm/rfmCalculator';
 import { euclideanDistance, PERSONA_METAS } from '../rfm/mlClustering';
 import {
   generateCustomerRecommendation,
+  buildBaskets,
+  pickRelated,
   BANGLADESHI_CATALOG,
+  ProductCatalogItem,
 } from '../rfm/recommendationEngine';
+import { predictBehaviour } from '../rfm/behaviourModel';
 import {
   Zap,
   Search,
@@ -34,6 +38,7 @@ interface Tab5POSPredictorProps {
   rawCentroidsStandardized: number[][];
   currencySymbol: string;
   cleanedRows?: CleanedTransaction[];
+  catalog?: ProductCatalogItem[];
 }
 
 export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
@@ -43,6 +48,7 @@ export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
   rawCentroidsStandardized,
   currencySymbol,
   cleanedRows = [],
+  catalog = BANGLADESHI_CATALOG,
 }) => {
   const [selectedCustomerKey, setSelectedCustomerKey] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -66,13 +72,8 @@ export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
       setMonetary(found.monetary);
       setIpt(found.interPurchaseTime);
       setBasketDepth(found.basketDepth);
-      if (found.phone) {
-        setPhoneInput(found.phone);
-      } else if (found.messengerId) {
-        setPhoneInput(found.messengerId);
-      } else {
-        setPhoneInput(`m.me/${found.customerKey.replace(/^(cust_|fb_|email_|phone_)/, '')}`);
-      }
+      // Only contact details from the data; a guessed m.me handle can belong to a stranger.
+      setPhoneInput(found.phone || found.messengerId || '');
     }
   };
 
@@ -145,14 +146,19 @@ export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
   // Generated WhatsApp message
   const personalizedOffer = useMemo(() => {
     return assignedMeta.defaultCampaignMessage
-      .replace(/{name}/g, phoneInput || 'Valued Customer')
+      .replace(/{name}/g, customers.find((c) => c.customerKey === selectedCustomerKey)?.customerName || 'Valued Customer')
       .replace(/{shop_name}/g, 'Our Retail Shop')
       .replace(/{discount_code}/g, assignedMeta.defaultCode)
       .replace(/{monetary}/g, `${currencySymbol}${monetary}`)
       .replace(/{recency}/g, String(recency));
-  }, [assignedMeta, phoneInput, currencySymbol, monetary, recency]);
+  }, [assignedMeta, customers, selectedCustomerKey, currencySymbol, monetary, recency]);
 
-  // Dynamic Real-Time Counter Cross-Sell & Upsell Offer
+  const baskets = useMemo(() => buildBaskets(cleanedRows, catalog), [cleanedRows, catalog]);
+  // The same 90-day prediction as "Who buys next", for the looked-up customer
+  const behaviour = useMemo(() => predictBehaviour(cleanedRows ?? [], 90), [cleanedRows]);
+  const forecast = selectedCustomerKey ? behaviour?.customers.find((c) => c.customerKey === selectedCustomerKey) : undefined;
+
+  // Dynamic Real-Time Counter Cross-Sell & Upsell Offer (the same pick as Send messages)
   const companionRecommendation = useMemo(() => {
     const mockCustomer: CustomerRFMTD = {
       customerKey: selectedCustomerKey || 'counter_shopper',
@@ -177,8 +183,9 @@ export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
     return generateCustomerRecommendation(
       mockCustomer,
       pastItems,
-      BANGLADESHI_CATALOG,
-      currencySymbol
+      catalog,
+      currencySymbol,
+      baskets && selectedCustomerKey ? pickRelated(selectedCustomerKey, catalog, baskets) : null
     ).primaryRecommendation;
   }, [
     selectedCustomerKey,
@@ -190,6 +197,8 @@ export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
     basketDepth,
     predictionResult.persona,
     cleanedRows,
+    catalog,
+    baskets,
     currencySymbol,
   ]);
 
@@ -246,7 +255,7 @@ export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden"
             >
               <option value="">-- Choose or type custom values below --</option>
-              {customers.slice(0, 30).map((c) => (
+              {customers.map((c) => (
                 <option key={c.customerKey} value={c.customerKey}>
                   {c.customerKey} ({c.persona}) — Spend: {currencySymbol}{c.monetary.toFixed(0)}, Orders: {c.frequency}
                 </option>
@@ -513,6 +522,17 @@ export const Tab5POSPredictor: React.FC<Tab5POSPredictorProps> = ({
               </div>
             </div>
           </div>
+
+          {forecast && (
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-emerald-600" /> Next 90 days</span>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div><p className="text-xl font-black text-slate-900">{Math.round(100 * forecast.pActive)}%</p><p className="text-xs text-slate-500">chance still a customer</p></div>
+                <div><p className="text-xl font-black text-slate-900">{forecast.expectedOrders.toFixed(1)}</p><p className="text-xs text-slate-500">expected orders</p></div>
+                <div><p className="text-xl font-black text-slate-900">{currencySymbol}{Math.round(forecast.predictedSpend).toLocaleString()}</p><p className="text-xs text-slate-500">expected spend</p></div>
+              </div>
+            </div>
+          )}
 
           {/* Card 2: AI Counter Cross-Sell & Upsell Pitch */}
           {companionRecommendation && (

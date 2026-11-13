@@ -9,6 +9,8 @@ import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Lock, Sparkles,
 interface Props {
   currentRows: RawTransaction[];
   currentName: string;
+  /** Report of the automatic cleaning done when the loaded file was uploaded. */
+  currentReport?: CleaningReport;
   onUseCleaned: (rows: RawTransaction[], label: string) => void;
 }
 
@@ -21,7 +23,7 @@ const KIND_STYLE: Record<string, string> = {
   text: 'bg-slate-50 text-slate-600 border-slate-200',
 };
 
-export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, onUseCleaned }) => {
+export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, currentReport, onUseCleaned }) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [source, setSource] = useState<{ name: string; rows: RawTransaction[] } | null>(null);
   const [dropInvalidDates, setDropInvalidDates] = useState(true);
@@ -30,8 +32,9 @@ export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, onUs
   const [busy, setBusy] = useState(false);
 
   const result = useMemo<{ rows: RawTransaction[]; report: CleaningReport } | null>(
-    () => (source ? autoCleanDataset(source.rows, { dropInvalidDates, dateOrder }) : null),
-    [source, dropInvalidDates, dateOrder]
+    () => (source ? autoCleanDataset(source.rows, { dropInvalidDates, dateOrder })
+      : currentReport ? { rows: currentRows, report: currentReport } : null),
+    [source, dropInvalidDates, dateOrder, currentReport, currentRows]
   );
 
   const load = async (file: File) => {
@@ -46,7 +49,7 @@ export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, onUs
     }
   };
 
-  const baseName = (source?.name || 'dataset').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '_');
+  const baseName = (source?.name || (currentReport ? currentName : 'dataset')).replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '_');
   const exportCsv = () => {
     if (!result) return;
     const safe = result.rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, csvSafe(v)])));
@@ -62,7 +65,7 @@ export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, onUs
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.rows), 'Cleaned');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.report.steps.map((s) => ({ Rule: s.rule, Affected: s.affected, Detail: s.detail }))), 'Cleaning log');
-    XLSX.writeFile(wb, `${baseName}_cleaned.xlsx`);
+    XLSX.writeFile(wb, `${baseName}_cleaned.xlsx`, { compression: true });
   };
 
   const r = result?.report;
@@ -93,13 +96,13 @@ export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, onUs
             >
               <Upload className="w-4 h-4" /> {busy ? 'Reading…' : 'Choose file'}
             </button>
-            <button
+            {!currentReport && <button
               onClick={() => setSource({ name: currentName, rows: currentRows })}
               disabled={busy || currentRows.length === 0}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 cursor-pointer disabled:opacity-60"
             >
               <Sparkles className="w-4 h-4 text-emerald-600" /> Clean the loaded dataset
-            </button>
+            </button>}
             <input
               ref={inputRef}
               type="file"
@@ -153,6 +156,7 @@ export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, onUs
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-bold text-slate-900">What the cleaner did</h3>
+                {source ? <>
                 <label className="text-[11px] text-slate-600 inline-flex items-center gap-1.5">
                   Date order
                   <select value={dateOrder} onChange={(e) => setDateOrder(e.target.value as typeof dateOrder)} className="border border-slate-300 rounded px-1 py-0.5 bg-white">
@@ -165,6 +169,7 @@ export const DataCleanerTab: React.FC<Props> = ({ currentRows, currentName, onUs
                   <input type="checkbox" checked={dropInvalidDates} onChange={(e) => setDropInvalidDates(e.target.checked)} />
                   Remove rows without a readable date
                 </label>
+                </> : <span className="text-[11px] text-slate-500">Done automatically when you uploaded {currentName.replace(/^Uploaded File: /, '')}</span>}
               </div>
               <table className="w-full text-xs">
                 <tbody className="divide-y divide-slate-100">

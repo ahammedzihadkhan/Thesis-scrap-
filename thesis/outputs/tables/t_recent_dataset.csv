@@ -1,0 +1,19 @@
+Measure,UCI Online Retail,Open e-commerce 1.0
+Real data,True,True
+Cutoff,2011-09-01,2022-01-01
+Horizon (days),99,150
+Customers,3317,4991
+One-time (%),41.5,0.9
+Early-stage (%),62.3,2.0
+Silhouette k=4,0.295,0.324
+Bootstrap ARI k=4,0.942,0.805
+Valid k=4,True,True
+Repurchase (%),58.8,91.3
+AUC guest rule,0.651,0.52
+AUC quintile RFM,0.711,0.842
+AUC k=2,0.672,0.799
+AUC k=4,0.708,0.862
+AUC plain RFM k=4,0.702,0.874
+AUC supervised,0.741,0.913
+AUC k=4 early-stage,0.597,0.512
+AUC k=4 established,0.634,0.859

@@ -1,0 +1,3 @@
+Dataset,Customers,Cutoff,Days ahead,Bought again (%),"AUC, BG/NBD expected orders","AUC, past orders per week",Predicted purchases,Actual purchases,Predicted spend,Actual spend,Seconds
+"UCI Online Retail (UK, 2010-11)",3370,2011-09-10,90,57.0,0.729,0.688,3305,4482,1606666,2851873,1.8
+Daraz BD sample (app demo),25,2024-10-31,90,100.0,NaN,NaN,235,239,258024,258884,0.0

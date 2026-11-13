@@ -149,13 +149,10 @@ export function calculate5DRFM(
     // Basket Depth (D): Distinct products/SKUs
     const basketDepth = Math.max(1, g.skus.size);
 
+    // Only a Messenger ID from the data: a handle guessed from a customer ID or e-mail can open a stranger's chat.
     const messengerHandle = g.messengerId
       ? (g.messengerId.startsWith('m.me/') ? g.messengerId : `m.me/${g.messengerId.replace(/^https?:\/\/m\.me\//, '')}`)
-      : (g.customerKey.startsWith('fb_')
-          ? `m.me/${g.customerKey.replace('fb_', '')}`
-          : (!g.phone
-              ? `m.me/${g.customerKey.replace(/^(cust_|phone_|email_|guest_order_)/, '').toLowerCase().replace(/[^a-z0-9._-]/g, '.')}`
-              : (g.facebookProfileId || undefined)));
+      : (g.customerKey.startsWith('fb_') ? `m.me/${g.customerKey.replace('fb_', '')}` : undefined);
 
     const orderChannel: 'WhatsApp' | 'Facebook Messenger' | 'Facebook Page Direct' =
       g.orderChannel || (g.phone ? 'WhatsApp' : 'Facebook Messenger');

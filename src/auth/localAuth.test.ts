@@ -1,17 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { register, login, currentSession, logout, listUsers, passwordProblem, MAX_ATTEMPTS, LOCKOUT_MS } from './localAuth';
+import { register, login, currentSession, logout, listUsers, passwordProblem, MAX_ATTEMPTS, LOCKOUT_MS, TEST_ACCOUNT, ensureTestAccount, hasOwner, hasTestAccount, removeTestAccount } from './localAuth';
 
 const mem = () => {
   const m = new Map<string, string>();
   return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
 };
 
-test('password policy', () => {
-  assert.ok(passwordProblem('short1'));
-  assert.ok(passwordProblem('onlyletters'));
-  assert.ok(passwordProblem('rahim2024x', 'rahim'), 'must not contain the username');
-  assert.equal(passwordProblem('kroy-pulse-77'), null);
+test('password policy: length only', () => {
+  assert.ok(passwordProblem('abc'), 'fewer than 4 characters is rejected');
+  for (const pw of ['1234', 'abcd', 'rahim2024']) assert.equal(passwordProblem(pw), null);
 });
 
 test('register stores only a salted hash, login works, wrong password fails', async () => {
@@ -36,8 +34,27 @@ test('only a signed-in user can add more accounts', async () => {
   await register('owner', 'shop-secret-9', ls, ss);
   await assert.rejects(register('intruder', 'other-pass-11', ls, ss), /signed-in/);
   await login('owner', 'shop-secret-9', ls, ss);
-  await register('staff1', 'staff-pass-22', ls, ss);
-  assert.equal(listUsers(ls).length, 2);
+  await register('Staff One', '1234', ls, ss);
+  assert.deepEqual(listUsers(ls).map((u) => u.username), ['owner', 'staff one']);
+});
+
+test('test account: created once, cannot add accounts once an owner exists, stays removed', async () => {
+  const ls = mem(), ss = mem();
+  await Promise.all([ensureTestAccount(ls), ensureTestAccount(ls)]);
+  assert.deepEqual(listUsers(ls).map((u) => u.username), ['test'], 'one test account, even with two parallel calls');
+  assert.ok(hasTestAccount(ls) && !hasOwner(ls));
+  await login(TEST_ACCOUNT.username, TEST_ACCOUNT.password, ls, ss);
+  logout(ss);
+
+  await register('owner', 'shop-secret-9', ls, ss); // the first real account needs no sign-in
+  assert.ok(hasOwner(ls));
+  await login('test', 'test1234', ls, ss);
+  await assert.rejects(register('friend', '1234', ls, ss), /test account cannot/);
+
+  removeTestAccount(ls);
+  await ensureTestAccount(ls);
+  assert.deepEqual(listUsers(ls).map((u) => u.username), ['owner'], 'a removed test account does not come back');
+  await assert.rejects(login('test', 'test1234', ls, ss), /Wrong username or password/);
 });
 
 test('lockout after repeated failures', async () => {

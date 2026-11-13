@@ -8,7 +8,7 @@ import { defineConfig, type Plugin } from 'vite';
 // user-clicked navigations, not requests.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'", // WebAssembly for the offline AI writer; JavaScript eval stays blocked
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
@@ -25,6 +25,8 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   'Cross-Origin-Opener-Policy': 'same-origin',
+  // With COOP, makes the page cross-origin isolated, so the offline AI writer's WebAssembly can use several CPU threads.
+  'Cross-Origin-Embedder-Policy': 'require-corp',
 };
 
 // The dev server needs an inline React-refresh script, so the CSP is only baked into the production build.
@@ -41,6 +43,7 @@ export default defineConfig(() => ({
       '@': path.resolve(__dirname, '.'),
     },
   },
+  worker: { format: 'es' as const }, // the AI writer's worker loads the ONNX runtime as an ES module
   build: {
     sourcemap: false,
     chunkSizeWarningLimit: 4000, // one local bundle; nothing is downloaded over the internet
