@@ -1,0 +1,9 @@
+Test set,Writer,Messages,Passed fact check (%),Personal (%),Names a bought product (%),Uses the name (%),Says what buyers of their product chose (%),Shows the old price (%),Distinct bigrams,Words,Seconds per message,Drafts per message
+"Synthetic shops (unseen names, shops, products)","Template (app default)",300,16.3,0.0,0.0,100.0,0.0,0.0,0.271,23.9,,
+"Synthetic shops (unseen names, shops, products)","Writer, one greedy draft",300,76.3,70.3,91.8,100.0,97.4,100.0,0.363,43.6,0.83,1.00
+"Synthetic shops (unseen names, shops, products)","Writer, one sampled draft",300,68.7,58.3,85.4,98.2,92.5,100.0,0.412,42.4,0.83,1.00
+"Synthetic shops (unseen names, shops, products)","Writer as used in the app (best of 3)",300,89.7,84.7,94.2,100.0,94.0,100.0,0.405,43.5,1.30,1.58
+"UCI real customers (held out)","Template (app default)",300,15.0,0.3,0.0,100.0,0.0,0.0,0.129,24.1,,
+"UCI real customers (held out)","Writer, one greedy draft",300,91.0,90.7,99.6,100.0,98.6,100.0,0.248,45.1,0.79,1.00
+"UCI real customers (held out)","Writer, one sampled draft",300,84.0,77.0,94.4,96.1,96.0,99.5,0.292,45.2,0.81,1.00
+"UCI real customers (held out)","Writer as used in the app (best of 3)",300,96.7,96.7,100.0,100.0,96.9,99.6,0.289,45.5,1.06,1.31

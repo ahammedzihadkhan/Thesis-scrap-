@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { CustomerRFMTD, PersonaType, CampaignConfig } from '../rfm/types';
 import { PERSONA_METAS, EARLY_SEGMENT_METAS } from '../rfm/mlClustering';
-import { DEFAULT_CAMPAIGN_CONFIGS } from '../rfm/campaignDefaults';
+import { BANGLA_TEMPLATES, DEFAULT_CAMPAIGN_CONFIGS, EARLY_MESSAGES_BN, OFFER_OPTIONS, PLAIN_GROUP_NAME, offerPct, offerPrice, withOfferPct } from '../rfm/campaignDefaults';
 import {
   MessageSquare,
   Mail,
@@ -37,7 +37,7 @@ import {
   ProductCatalogItem,
 } from '../rfm/recommendationEngine';
 import { downloadCsv } from '../rfm/dataCleaner';
-import { customerFacts, factsToInput, topProducts, WRITER_TONES, type WriterTone } from '../ai/messageFacts';
+import { customerFacts, factsToInput, topProducts, WRITER_TONES, type WriterLang, type WriterTone } from '../ai/messageFacts';
 import { writeMessage, writerInstalled, type Written } from '../ai/localWriter';
 
 // AI messages by the exact facts they were written from: they survive tab switches until the page reloads, and a
@@ -82,6 +82,21 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
   // Editable Campaign configs per persona with personalized product merge tags
   const [campaignConfigs, setCampaignConfigs] = useState<Record<PersonaType, CampaignConfig>>(DEFAULT_CAMPAIGN_CONFIGS);
 
+  // Message language: Bangla uses the Bangla templates, or the Bangla AI writer (its own model) for the customers it writes for.
+  const [lang, setLang] = useState<'en' | 'bn'>('en');
+  const switchLang = (next: 'en' | 'bn') => {
+    setLang(next);
+    setCampaignConfigs((prev) => {
+      const out = { ...prev };
+      for (const p of Object.keys(prev) as PersonaType[]) {
+        const messageTemplate = next === 'bn' ? BANGLA_TEMPLATES[p] : DEFAULT_CAMPAIGN_CONFIGS[p].messageTemplate;
+        // keep the code and offer the owner chose; only the message text changes, with the chosen percentage
+        out[p] = { ...prev[p], messageTemplate: offerPct(prev[p]) ? withOfferPct({ ...prev[p], messageTemplate }, offerPct(prev[p])).messageTemplate : messageTemplate };
+      }
+      return out;
+    });
+  };
+
   const handleConfigChange = (
     persona: PersonaType,
     field: keyof CampaignConfig,
@@ -97,21 +112,21 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
   };
 
   // Offline AI writer (scripts/writer): a message per customer from their own buying facts, fact-checked before use.
-  const [aiInstalled, setAiInstalled] = useState<boolean | null>(null);
+  const [aiInstalled, setAiInstalled] = useState<Record<WriterLang, boolean | null>>({ en: null, bn: null }); // one model per language
   const [aiTone, setAiTone] = useState<WriterTone>('friendly');
   const [aiVersion, setAiVersion] = useState(0);
   const [aiRun, setAiRun] = useState<{ done: number; total: number; kept: number; running: boolean; started: number; error?: string } | null>(null);
   const aiStop = useRef(false);
-  const boughtMap = useMemo(() => topProducts(cleanedRows), [cleanedRows]);
+  const boughtMap = useMemo(() => topProducts(cleanedRows, 3, lang), [cleanedRows, lang]);
   useEffect(() => {
-    writerInstalled().then(setAiInstalled);
+    for (const l of ['en', 'bn'] as const) writerInstalled(l).then((ok) => setAiInstalled((prev) => ({ ...prev, [l]: ok })));
     return () => { aiStop.current = true; };
   }, []);
   // Stop writing when the facts change (codes, prices, shop name, tone, data); finished messages stay in aiWritten.
   useEffect(() => {
     aiStop.current = true;
     setAiRun(null);
-  }, [customers, campaignConfigs, shopName, currencySymbol, recommendationsMap, aiTone]);
+  }, [customers, campaignConfigs, shopName, currencySymbol, recommendationsMap, aiTone, lang]);
 
   const writerInput = (c: CustomerRFMTD) => {
     const rec = recommendationsMap.get(c.customerKey)?.primaryRecommendation;
@@ -125,8 +140,9 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
       currency: currencySymbol,
       reason: rec?.suggestionKind,
       basis: rec?.basisProduct,
+      lang,
     });
-    return { facts, key: factsToInput(facts) };
+    return { facts, key: `${lang}|${factsToInput(facts, lang)}` }; // English and Bangla messages are kept apart
   };
 
   const writeWithAi = async () => {
@@ -138,7 +154,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
     for (const [i, c] of list.entries()) {
       const { facts, key } = writerInput(c);
       try {
-        const written = aiWritten.get(key) ?? (await writeMessage(facts)); // already written: keep it
+        const written = aiWritten.get(key) ?? (await writeMessage(facts, 3, lang)); // already written: keep it
         if (aiStop.current) break;
         if (written) {
           kept++;
@@ -162,9 +178,11 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
       if (w) out.set(c.customerKey, w.text);
     }
     return out;
-  }, [aiVersion, customers, campaignConfigs, shopName, currencySymbol, recommendationsMap, aiTone, boughtMap]);
+  }, [aiVersion, customers, campaignConfigs, shopName, currencySymbol, recommendationsMap, aiTone, boughtMap, lang]);
 
   const formatMessage = (c: CustomerRFMTD) => aiOverrides.get(c.customerKey) ?? templateMessage(c);
+  // What the send and export windows use: in Bangla every customer gets the AI message or else the Bangla template (the windows only know English templates).
+  const sendOverrides = lang === 'bn' ? new Map(customers.map((c) => [c.customerKey, formatMessage(c)] as [string, string])) : aiOverrides;
 
   // Build personalized message for a customer with dynamic suggestion tags
   const templateMessage = (c: CustomerRFMTD) => {
@@ -181,14 +199,14 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
     const recProfile = recommendationsMap.get(c.customerKey);
     const suggestedProduct = recProfile?.primaryRecommendation.productName || 'Handcrafted Featured Piece';
     const suggestedPrice = recProfile?.primaryRecommendation.discountedPrice
-      ? `${currencySymbol}${recProfile.primaryRecommendation.discountedPrice.toLocaleString()}`
-      : `${currencySymbol}${Math.round(c.avgOrderValue * 0.85).toLocaleString()}`;
+      ? `${currencySymbol}${offerPrice(recProfile.primaryRecommendation.originalPrice, recProfile.primaryRecommendation.discountedPrice, cfg).toLocaleString()}`
+      : `${currencySymbol}${Math.round(c.avgOrderValue * (1 - (offerPct(cfg) || 15) / 100)).toLocaleString()}`;
     const personalizedOffer = recProfile?.primaryRecommendation.recommendationReason
       ? `${recProfile.primaryRecommendation.discountPct}% Off (${recProfile.primaryRecommendation.recommendationReason})`
       : cfg.discountValue;
 
     // Early-stage customers get a lifecycle message instead of a segment offer (two-track strategy).
-    return (c.earlySegment ? EARLY_SEGMENT_METAS[c.earlySegment].message : cfg.messageTemplate)
+    return (c.earlySegment ? (lang === 'bn' ? EARLY_MESSAGES_BN[c.earlySegment] : EARLY_SEGMENT_METAS[c.earlySegment].message) : cfg.messageTemplate)
       .replace(/{name}/g, name)
       .replace(/{shop_name}/g, shopName)
       .replace(/{discount_code}/g, cfg.discountCode)
@@ -297,6 +315,8 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
 
   // Active configuration for template tab
   const activeCfg = campaignConfigs[activePersonaTab];
+  const activeGroup = customers.filter((c) => c.persona === activePersonaTab);
+  const activeAvgOrder = activeGroup.length ? activeGroup.reduce((sum, c) => sum + c.avgOrderValue, 0) / activeGroup.length : 0;
   const activeMeta = PERSONA_METAS[activePersonaTab];
 
   // Sample customer for live preview
@@ -327,14 +347,14 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                F-Commerce Campaign Studio
+                Send messages
               </h2>
               <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                WhatsApp & Facebook Messenger Dispatch
+                Three steps: choose the offer, check the message, send
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Target customer segments with personalized promotions. If a customer ordered through Facebook/Messenger without a WhatsApp phone, target their Messenger inbox directly with 1-click!
+              Each customer group gets its own offer and message. Customers without a WhatsApp number can be reached on Messenger instead.
             </p>
           </div>
 
@@ -390,10 +410,10 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
           <div className="flex items-center justify-between pb-3 flex-wrap gap-2">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                Segment Message Templates & Offers
+                Step 1 · Choose the offer for each group
               </span>
               <p className="text-[11px] text-slate-400">
-                Select a customer segment to configure discount codes and personalized messaging.
+                Pick a group, choose a discount, then check the message on the right.
               </p>
             </div>
           </div>
@@ -415,7 +435,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
                   }`}
                 >
                   {personaIcons[pType]}
-                  <span>{meta.title}</span>
+                  <span>{PLAIN_GROUP_NAME[pType]}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                       isActive ? 'bg-slate-100 text-slate-700' : 'text-slate-400'
@@ -437,7 +457,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
               {/* Promo Code */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
-                  Discount Promo Code
+                  Discount code
                 </label>
                 <div className="relative">
                   <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
@@ -456,7 +476,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
               {/* Offer Headline / Benefit */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
-                  Offer Value / Headline
+                  Offer (what the customer gets)
                 </label>
                 <input
                   type="text"
@@ -470,14 +490,67 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
               </div>
             </div>
 
+            {/* Suggested discount levels for this group */}
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+              <p className="text-xs font-semibold text-slate-800">How big should the discount be?</p>
+              <p className="text-[11px] text-slate-600 mt-0.5">{OFFER_OPTIONS[activePersonaTab].why}</p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {OFFER_OPTIONS[activePersonaTab].options.map((pct) => {
+                  const picked = offerPct(activeCfg) === pct;
+                  return (
+                    <button
+                      key={pct}
+                      type="button"
+                      aria-pressed={picked}
+                      onClick={() => setCampaignConfigs((prev) => ({ ...prev, [activePersonaTab]: withOfferPct(prev[activePersonaTab], pct) }))}
+                      className={`text-left rounded-lg border px-3 py-1.5 cursor-pointer transition-colors ${
+                        picked ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-400'
+                      }`}
+                    >
+                      <span className="block text-sm font-bold">
+                        {pct}% off{pct === OFFER_OPTIONS[activePersonaTab].suggested ? ' · suggested' : ''}
+                      </span>
+                      <span className={`block text-[11px] ${picked ? 'text-emerald-50' : 'text-slate-500'}`}>
+                        costs about {currencySymbol}{Math.round((activeAvgOrder * pct) / 100).toLocaleString()} per order
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2">
+                Based on this group's average order of {currencySymbol}{Math.round(activeAvgOrder).toLocaleString()}. Picking one updates the code, the offer and the message below.
+              </p>
+            </div>
+
+            {/* Message language */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-800">Message language:</span>
+              {([['en', 'English'], ['bn', 'বাংলা (Bangla)']] as const).map(([code, label]) => (
+                <button
+                  key={code}
+                  type="button"
+                  aria-pressed={lang === code}
+                  onClick={() => switchLang(code)}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border cursor-pointer ${
+                    lang === code ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-400'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              {lang === 'bn' && (
+                <span className="text-[11px] text-slate-500">Bangla messages: the ready-made text below, or the Bangla AI writer further down.</span>
+              )}
+            </div>
+
             {/* Template Textarea */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[11px] font-semibold text-slate-700 uppercase tracking-wide">
-                  Message Copy Template
+                  Step 2 · Check the message
                 </label>
                 <span className="text-[11px] text-slate-400">
-                  Insert merge tokens below
+                  Words like {"{name}"} are filled in for each customer
                 </span>
               </div>
               <textarea
@@ -491,7 +564,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
 
               {/* Quick Token Pills */}
               <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                <span className="text-[10px] text-slate-400 font-medium">Merge Tags:</span>
+                <span className="text-[10px] text-slate-400 font-medium">Add:</span>
                 {[
                   { tag: '{name}', label: 'Customer Name / Phone' },
                   { tag: '{shop_name}', label: 'Store Name' },
@@ -629,12 +702,19 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
       </div>
 
       {/* Module: WhatsApp Campaign Revenue Impact Forecaster */}
-      <CampaignForecaster
-        customers={customers}
-        currencySymbol={currencySymbol}
-        selectedSegmentFilter={selectedPersonaFilter}
-        onApplySegmentFilter={(seg) => setSelectedPersonaFilter(seg)}
-      />
+      <details className="bg-white rounded-xl border border-slate-200/90 shadow-xs">
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-slate-800">
+          Optional: estimate how much a campaign could earn
+        </summary>
+        <div className="p-3 pt-0">
+          <CampaignForecaster
+            customers={customers}
+            currencySymbol={currencySymbol}
+            selectedSegmentFilter={selectedPersonaFilter}
+            onApplySegmentFilter={(seg) => setSelectedPersonaFilter(seg)}
+          />
+        </div>
+      </details>
 
       {/* Offline AI writer: one message per customer from their buying habits, checked against the data */}
       <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs">
@@ -645,13 +725,13 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
             </h3>
             <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
               Writes a different message for each customer from what they buy, how often they order and when they last
-              ordered, in English. It runs on this computer's CPU and sends nothing anywhere. Every message is checked: the product,
+              ordered, in English or Bangla (the language you chose above). It runs on this computer's CPU and sends nothing anywhere. Every message is checked: the product,
               price, offer and code must match your data and nothing may be invented, otherwise the normal template is used.
             </p>
           </div>
-          {aiInstalled === false ? (
+          {aiInstalled[lang] === false ? (
             <p className="text-xs text-slate-500 max-w-xs">
-              Not installed on this computer. See “Offline AI writer” in the README to build it (about 2 hours on a laptop CPU).
+              {lang === 'bn' ? 'The Bangla writer is' : 'The English writer is'} not installed on this computer. See “Offline AI writer” in the README to build it.
             </p>
           ) : (
             <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -673,7 +753,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
               ) : (
                 <button
                   onClick={writeWithAi}
-                  disabled={!aiInstalled || filteredQueue.length === 0}
+                  disabled={!aiInstalled[lang] || filteredQueue.length === 0}
                   className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50"
                 >
                   Write {filteredQueue.length.toLocaleString()} messages with AI
@@ -707,13 +787,13 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
         )}
       </div>
 
-      {/* Live Campaign Dispatch Queue & Customer Table */}
+      {/* Step 3 · Send to each customer & Customer Table */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
         {/* Table Toolbar */}
         <div className="p-4 border-b border-slate-200/80 bg-slate-50/70 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">
-              Live Campaign Dispatch Queue
+              Step 3 · Send to each customer
             </h3>
             <p className="text-xs text-slate-500">
               Showing {filteredQueue.length} of {customers.length} target customers
@@ -1010,7 +1090,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
         currencySymbol={currencySymbol}
         campaignConfigs={campaignConfigs}
         recommendationsMap={recommendationsMap}
-        messageOverrides={aiOverrides}
+        messageOverrides={sendOverrides}
       />
 
       <WhatsAppBulkExportModal
@@ -1021,7 +1101,7 @@ export const Tab4CampaignStudio: React.FC<Tab4CampaignStudioProps> = ({
         currencySymbol={currencySymbol}
         campaignConfigs={campaignConfigs}
         recommendationsMap={recommendationsMap}
-        messageOverrides={aiOverrides}
+        messageOverrides={sendOverrides}
       />
 
       {/* Detailed Customer Personalized Recommendation & Offer Modal */}

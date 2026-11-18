@@ -1,6 +1,9 @@
 # Offline message writer: training and ONNX export (CPU only). Python 3.12.
 #   uv venv scripts/writer/.venv --python 3.12
 #   uv pip install --python scripts/writer/.venv -r scripts/writer/requirements.txt
+# GPU (optional): train.py uses an NVIDIA card when PyTorch can see it. That needs a CUDA build of torch instead of
+# the CPU one below (replace "cpu" with "cu118" in the next line) and an NVIDIA driver new enough for it; with a
+# 2 GB card keep --batch 8 --checkpointing. Without both, train.py runs on the CPU.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.5.1
 transformers==4.46.3

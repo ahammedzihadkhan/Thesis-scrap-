@@ -7,6 +7,7 @@ import {
 } from './types';
 import { csvSafe } from './dataCleaner';
 import { EARLY_SEGMENT_METAS } from './mlClustering';
+import { offerPct, offerPrice } from './campaignDefaults';
 
 /**
  * Standardizes phone numbers to clean international E.164 digits without leading '+'
@@ -106,8 +107,8 @@ export function generateWhatsAppBulkExport(
     const recProfile = recommendationsMap?.get(c.customerKey);
     const suggestedProduct = recProfile?.primaryRecommendation.productName || 'Handcrafted Featured Collection';
     const suggestedPrice = recProfile?.primaryRecommendation.discountedPrice
-      ? `${currencySymbol}${recProfile.primaryRecommendation.discountedPrice}`
-      : `${currencySymbol}${Math.round(c.avgOrderValue * 0.85)}`;
+      ? `${currencySymbol}${offerPrice(recProfile.primaryRecommendation.originalPrice, recProfile.primaryRecommendation.discountedPrice, cfg)}`
+      : `${currencySymbol}${Math.round(c.avgOrderValue * (1 - (offerPct(cfg) || 15) / 100))}`;
     const personalizedOffer = recProfile?.primaryRecommendation.recommendationReason
       ? `${recProfile.primaryRecommendation.discountPct}% Off (${recProfile.primaryRecommendation.recommendationReason})`
       : cfg.discountValue;

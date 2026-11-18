@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
-from scipy.stats import skew, spearmanr
+from scipy.stats import rankdata, skew, spearmanr
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN, HDBSCAN, Birch
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression, LogisticRegression
@@ -1685,6 +1685,133 @@ recent.T, am_sig
 # %% [markdown]
 # ## Save headline results
 # `outputs/results.json` holds every scalar quoted in the thesis text; `outputs/tables/*.tex` are included directly by the LaTeX source.
+
+# %% [markdown]
+# ## Part 19 — New: choosing the number of segments by predictive validity
+# Prediction keeps improving slowly with more segments (Part 7), so "more predictive" alone cannot choose k.
+# The rule, fixed before it was run: **take the smallest k whose out-of-sample repurchase AUC is not
+# significantly below the best k in 2–8** (paired bootstrap, 1,000 resamples, 95% CI of the difference
+# includes zero) — the parsimony idea of the one-standard-error rule in model selection. The same six datasets,
+# cutoffs and horizons as Parts 17–18; the internal indices' choices are shown beside it.
+
+# %% [markdown]
+# ### 19a · The rule on six datasets
+# For every dataset: AUC for k = 2 to 8, the k chosen by the rule, and the k preferred by the Silhouette and Davies–Bouldin indices.
+
+# %%
+KS = range(2, 9)
+
+
+def choose_k(name, txd, cutoff, horizon_days):
+    cutoff = pd.Timestamp(cutoff)
+    pre = txd[txd["InvoiceDate"] < cutoff]
+    post = txd[(txd["InvoiceDate"] >= cutoff) & (txd["InvoiceDate"] < cutoff + pd.Timedelta(days=horizon_days))]
+    f = build_features(pre, cutoff)
+    spend_ = post.groupby("CustomerID")["Amount"].sum().reindex(f.index).fillna(0.0).values
+    y_ = (spend_ > 0).astype(int)
+    Xd = scale(f)
+    smp = np.random.default_rng(SEED).choice(len(Xd), min(10_000, len(Xd)), replace=False)
+    labs = {k: km_labels(f, k) for k in KS}
+    p = {k: evaluate(labs[k], y_, spend_)[1] for k in KS}
+    auc = {k: roc_auc_score(y_, p[k]) for k in KS}
+    best = max(auc, key=auc.get)
+    gap = {k: boot_test(p[best], p[k], y_) if k != best else (0.0, 0.0, 0.0, 1.0) for k in KS}
+    chosen = min(k for k in KS if gap[k][1] <= 0)  # CI of AUC(best) - AUC(k) reaches zero: not significantly worse
+    sil = {k: silhouette_score(Xd[smp], labs[k][smp]) for k in KS}
+    dbi = {k: davies_bouldin_score(Xd[smp], labs[k][smp]) for k in KS}
+    K_DATA[name] = (f, y_, spend_)  # reused by the checks in 19b
+    row = {"Dataset": name, **{f"AUC k={k}": round(auc[k], 3) for k in KS}, "Best k": best,
+           "k by predictive rule": chosen, "Loss vs best (AUC)": round(gap[chosen][0], 3),
+           "k by Silhouette": max(sil, key=sil.get), "k by Davies-Bouldin": min(dbi, key=dbi.get)}
+    return row, auc
+
+
+K_RULE, K_CURVES, K_DATA = [], {}, {}
+for name, txd, cutoff, hz in [("UCI Online Retail", tx, "2011-09-01", 99), ("Online Retail II year 1", r2_tx, "2010-07-01", 150),
+                              ("CDNOW", cd_tx, "1997-10-01", 180), ("Olist", o_tx, "2018-03-01", 180),
+                              ("TheLook", t_tx, "2023-07-01", 180), ("Open e-commerce 1.0", am_tx, "2022-01-01", 150)]:
+    r, K_CURVES[name] = choose_k(name, txd, cutoff, hz)
+    K_RULE.append(r)
+    print(r)
+k_rule_tbl = save_table(pd.DataFrame(K_RULE), "t_k_rule")
+# Transposed copy for the thesis page (six dataset columns fit the page width; 13 measure columns do not).
+save_table(k_rule_tbl.set_index("Dataset").astype(object).T.rename_axis("Measure"), "t_k_rule_T", index=True)  # object: counts stay whole numbers
+RESULTS["k_rule"] = {r["Dataset"]: {"rule": r["k by predictive rule"], "best": r["Best k"], "silhouette": r["k by Silhouette"], "dbi": r["k by Davies-Bouldin"]} for r in K_RULE}
+
+fig, ax = plt.subplots(figsize=(7.5, 4))
+for (name, cur), r in zip(K_CURVES.items(), K_RULE):
+    ln, = ax.plot(list(cur), list(cur.values()), "o-", label=name, ms=4)
+    ax.plot(r["k by predictive rule"], cur[r["k by predictive rule"]], "*", ms=14, color=ln.get_color(), markeredgecolor="black")
+ax.set_xlabel("Number of segments k"); ax.set_ylabel("Out-of-sample repurchase AUC")
+ax.set_title("Predictive validity by k (star: smallest k not significantly below the best)")
+ax.legend(fontsize=7, ncol=2, loc="center right", bbox_to_anchor=(1.0, 0.43))  # the empty band between the curves
+savefig("f_k_rule")
+k_rule_tbl
+
+# %% [markdown]
+# ### 19b · Two checks on the rule: a wider range of k, and the size of the shop
+# **Wider range.** In 19a the most predictive k is often 8, the edge of the range, so the rule is repeated for k = 2 to 12.
+# **Shop size.** The rule uses a significance test, so a larger customer base can support more segments. To see what it
+# chooses for a small shop, it is repeated on 20 random samples of 250, 500, 1,000 and 2,000 customers per dataset
+# (both checks use 300 bootstrap resamples to keep the run short; a size is skipped where a sample would hold fewer than 30 repeat or 30 non-repeat buyers).
+
+# %%
+def boot_aucs(p_, y_, idx):
+    """AUC of every bootstrap resample at once (rank formula, equal to roc_auc_score); idx has one row per resample."""
+    yb, r = y_[idx], rankdata(p_[idx], axis=1)
+    pos = yb.sum(1)
+    return ((r * yb).sum(1) - pos * (pos + 1) / 2) / (pos * (yb.shape[1] - pos))
+
+
+def pick_k(f, y_, spend_, ks, B):
+    """The rule of 19a: smallest k whose AUC is not significantly below the best k (best k scored once per resample)."""
+    p = {k: evaluate(km_labels(f, k), y_, spend_)[1] for k in ks}
+    auc = {k: roc_auc_score(y_, p[k]) for k in ks}
+    best = max(auc, key=auc.get)
+    idx = np.random.default_rng(SEED).integers(0, len(y_), (B, len(y_)))
+    top = boot_aucs(p[best], y_, idx)
+    return next(k for k in ks if k == best or np.percentile(top - boot_aucs(p[k], y_, idx), 2.5) <= 0), best, auc  # first hit = smallest k
+
+
+_chk = np.random.default_rng(SEED).integers(0, 50, (20, 50)); _y = (np.arange(50) % 3 == 0).astype(int); _p = np.round(np.random.default_rng(1).random(50), 1)
+assert np.allclose(boot_aucs(_p, _y, _chk), [roc_auc_score(_y[i], _p[i]) for i in _chk])  # rank formula matches sklearn, ties included
+assert pick_k(*K_DATA["UCI Online Retail"], KS, 1000)[0] == K_RULE[0]["k by predictive rule"]  # same rule as 19a
+
+SIZES, K_WIDE, K_SIZE, K_SIZE_MED = (250, 500, 1000, 2000), [], [], {}
+for name, (f, y_, spend_) in K_DATA.items():
+    chosen, best, auc = pick_k(f, y_, spend_, range(2, 13), 300)
+    K_WIDE.append({"Dataset": name, "Customers": len(f), "Best k (2-12)": best, "k by predictive rule (2-12)": chosen,
+                   "k by predictive rule (2-8)": RESULTS["k_rule"][name]["rule"], "AUC at rule k": round(auc[chosen], 3), "AUC k=12": round(auc[12], 3)})
+    rng, row, K_SIZE_MED[name] = np.random.default_rng(SEED), {"Dataset": name}, {}
+    for n in SIZES:
+        if n >= len(f) or min(y_.mean(), 1 - y_.mean()) * n < 30:
+            row[f"{n:,} customers"] = "n/a"
+            continue
+        ks = []
+        for _ in range(20):
+            i = rng.choice(len(f), n, replace=False)
+            ks.append(pick_k(f.iloc[i], y_[i], spend_[i], KS, 300)[0])
+        lo, med, hi = np.percentile(ks, [25, 50, 75])
+        row[f"{n:,} customers"], K_SIZE_MED[name][n] = f"{med:g} ({lo:g}-{hi:g})", float(med)
+    row["All customers"] = f"{RESULTS['k_rule'][name]['rule']} (n = {len(f):,})"
+    K_SIZE.append(row)
+    print(K_WIDE[-1], row)
+save_table(pd.DataFrame(K_WIDE), "t_k_wide")
+k_size_tbl = save_table(pd.DataFrame(K_SIZE), "t_k_size")
+RESULTS["k_wide"] = {r["Dataset"]: {"rule": r["k by predictive rule (2-12)"], "best": r["Best k (2-12)"]} for r in K_WIDE}
+RESULTS["k_size_median"] = {name: {str(n): m for n, m in d.items()} for name, d in K_SIZE_MED.items()}
+
+fig, ax = plt.subplots(figsize=(7.5, 4))
+for name, d in K_SIZE_MED.items():
+    if d:
+        ax.plot(list(d), list(d.values()), "o-", label=name, ms=4)
+ax.axhline(4, color="grey", ls="--", lw=1)
+ax.set_xscale("log"); ax.set_xticks(SIZES); ax.set_xticklabels([f"{n:,}" for n in SIZES])
+ax.set_xlabel("Customers in the shop (random samples)"); ax.set_ylabel("Median k chosen by the predictive rule")
+ax.set_title("Bigger shops support more segments (dashed: the four used in KroyPulse)")
+ax.legend(fontsize=7)
+savefig("f_k_size")
+k_size_tbl
 
 # %% [markdown]
 # ### Save the headline numbers

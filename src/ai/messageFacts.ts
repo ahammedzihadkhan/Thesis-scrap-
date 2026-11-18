@@ -98,6 +98,33 @@ export function shortTitle(name: string, max = 60): string {
 /** The model's vocabulary covers Latin letters, digits, punctuation, £ and € but not Bangla script or emoji. */
 export const writable = (s: string) => /^[ -ÿ€]*$/.test(s);
 
+/** The Bangla writer (scripts/writer/make_data_bn.py) adds Bangla script and the zero-width joiners to the same Latin range. */
+export type WriterLang = 'en' | 'bn';
+export const writableBn = (s: string) => /^[ -ÿ€ঀ-৿‌‍–—‘’“”…]*$/.test(s);
+export const writableFor = (lang: WriterLang) => (lang === 'bn' ? writableBn : writable);
+
+const BN_UNIT: Record<string, string> = { day: 'দিন', days: 'দিন', weeks: 'সপ্তাহ', months: 'মাস', years: 'বছর' };
+const BN_EVERY: Record<string, string> = { days: 'দিনে', weeks: 'সপ্তাহে', months: 'মাসে' };
+const BN_GAP: Record<string, string> = { 'every day': 'প্রতিদিন', 'every week': 'প্রতি সপ্তাহে', 'every month': 'প্রতি মাসে', 'about once a year': 'বছরে প্রায় একবার' };
+const BN_OFFER: Record<string, string> = { 'free delivery': 'ফ্রি ডেলিভারি', 'a free gift': 'ফ্রি উপহার', 'a special discount': 'বিশেষ ছাড়' };
+
+/** The Bangla writer gets "last order", "usual gap" and "offer" already in Bangla, so it copies them: when_bn, gap_bn and offer_bn in make_data_bn.py. */
+export function bnWhen(s: string): string {
+  if (s === 'over a year ago') return 'এক বছরেরও বেশি আগে';
+  const m = s.match(/^(\d+) (day|days|weeks|months|years) ago$/);
+  return m ? `${m[1]} ${BN_UNIT[m[2]]} আগে` : s;
+}
+export function bnGap(s: string): string {
+  if (BN_GAP[s]) return BN_GAP[s];
+  const m = s.match(/^every (\d+) (days|weeks|months)$/);
+  return m ? `প্রতি ${m[1]} ${BN_EVERY[m[2]]}` : s;
+}
+export function bnOffer(s: string): string {
+  if (BN_OFFER[s]) return BN_OFFER[s];
+  const m = s.match(/^(\d+(?:\.\d+)?)% off$/);
+  return m ? `${m[1]}% ছাড়` : s;
+}
+
 /** The model cannot write ৳ or ₹. */
 const modelCurrency = (symbol: string) => (/৳/.test(symbol) ? 'Tk ' : /₹/.test(symbol) ? 'Rs ' : symbol);
 
@@ -126,17 +153,20 @@ export function offerText(discountValue: string): string {
   return discountValue.trim() ? 'a special discount' : '-';
 }
 
-/** First name for the greeting, or '-' when the data has none (IDs, phone numbers, e-mails, Bangla script). */
-export function firstName(raw?: string): string {
-  const words = (raw ?? '').trim().split(/\s+/).filter((w) => w && !/^(md|mohammad|muhammad|mohammed|mst|mrs?|ms|dr|sk|sheikh)\.?$/i.test(w));
+/** First name for the greeting, or '-' when the data has none (IDs, phone numbers, e-mails; Bangla script only for the Bangla writer). */
+export function firstName(raw?: string, lang: WriterLang = 'en'): string {
+  const honorific = /^(md|mohammad|muhammad|mohammed|mst|mrs?|ms|dr|sk|sheikh)\.?$|^(?:মো|মোঃ|মোহাম্মদ|মুহাম্মদ|মোছাঃ|মোসাম্মৎ|মিসেস|মিস্টার|ডাঃ|ডা|শেখ)\.?$/i;
+  const words = (raw ?? '').trim().split(/\s+/).filter((w) => w && !honorific.test(w));
   const w = words[0] ?? '';
-  if (!w || /^customer$/i.test(w) || !/^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*$/.test(w)) return '-';
-  if (w.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, '').length < 2) return '-'; // an initial such as "A." is not a name to greet
-  return w[0].toUpperCase() + w.slice(1).toLowerCase();
+  const bangla = lang === 'bn' && /^[ঀ-৿]+$/.test(w);
+  if (!w || /^customer$/i.test(w) || !(bangla || /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*$/.test(w))) return '-';
+  if ((w.match(/\p{L}/gu) ?? []).length < 2) return '-'; // an initial such as "A." is not a name to greet
+  return bangla ? w : w[0].toUpperCase() + w.slice(1).toLowerCase();
 }
 
 /** Each customer's most bought products (by order lines), at most three, in the model's form. */
-export function topProducts(rows: CleanedTransaction[], max = 3): Map<string, string[]> {
+export function topProducts(rows: CleanedTransaction[], max = 3, lang: WriterLang = 'en'): Map<string, string[]> {
+  const ok = writableFor(lang);
   const counts = new Map<string, Map<string, number>>();
   for (const r of rows) {
     const name = r.productName?.trim();
@@ -147,7 +177,7 @@ export function topProducts(rows: CleanedTransaction[], max = 3): Map<string, st
   }
   const out = new Map<string, string[]>();
   for (const [key, m] of counts) {
-    const names = [...m].sort((a, b) => b[1] - a[1]).map(([n]) => shortTitle(tidyProduct(n))).filter(writable);
+    const names = [...m].sort((a, b) => b[1] - a[1]).map(([n]) => shortTitle(tidyProduct(n))).filter(ok);
     out.set(key, names.slice(0, max));
   }
   return out;
@@ -159,29 +189,32 @@ export function customerFacts(
     tone: WriterTone; shop: string; buys: string[]; config: CampaignConfig;
     // the recommendation: product, its regular price in the shop's currency, and why it was chosen
     suggest?: string; originalPrice?: number; currency?: string; reason?: SuggestionKind; basis?: string;
+    lang?: WriterLang; // the Bangla writer can also write Bangla-script names, shops and products
   },
 ): WriterFacts {
+  const lang = o.lang ?? 'en';
+  const ok = writableFor(lang);
   const [offer, code] = c.earlySegment ? EARLY_OFFER[c.earlySegment] : [offerText(o.config.discountValue), o.config.discountCode || '-'];
   const suggest = o.suggest ? shortTitle(tidyProduct(o.suggest)) : '';
   const cur = modelCurrency(o.currency ?? '');
-  const ok = Boolean(suggest && (o.originalPrice ?? 0) > 0 && writable(suggest) && writable(cur));
-  const [price, was] = ok ? priced(cur, o.originalPrice!, offer) : ['-', '-'];
+  const hasSuggestion = Boolean(suggest && (o.originalPrice ?? 0) > 0 && ok(suggest) && writable(cur));
+  const [price, was] = hasSuggestion ? priced(cur, o.originalPrice!, offer) : ['-', '-'];
   const basis = o.basis ? shortTitle(tidyProduct(o.basis)) : '';
   const anchored = o.reason === 'bought together' || o.reason === 'same kind';
   // "Customers who bought X ..." needs a product X the model can write; without one, no claim at all
-  const because = ok && anchored && basis && writable(basis) ? basis : '-';
-  const reason = !ok || !o.reason || (anchored && because === '-') ? '-' : o.reason;
+  const because = hasSuggestion && anchored && basis && ok(basis) ? basis : '-';
+  const reason = !hasSuggestion || !o.reason || (anchored && because === '-') ? '-' : o.reason;
   return {
     segment: c.earlySegment ? EARLY_SEGMENT[c.earlySegment] : PERSONA_SEGMENT[c.persona ?? 'High-Potential / At-Risk Guests'],
     tone: o.tone,
-    name: firstName(c.customerName),
-    shop: writable(o.shop) && o.shop.trim() ? o.shop.trim() : 'our shop',
+    name: firstName(c.customerName, lang),
+    shop: ok(o.shop) && o.shop.trim() ? o.shop.trim() : lang === 'bn' ? 'আমাদের দোকান' : 'our shop',
     buys: o.buys.slice(0, 3),
     orders: Math.max(1, c.frequency),
     lastOrder: ago(c.recency),
     usualGap: c.frequency >= 2 && c.interPurchaseTime > 0 ? every(c.interPurchaseTime) : '-',
-    suggest: ok ? suggest : '-',
-    type: ok ? productType(suggest) : '-',
+    suggest: hasSuggestion ? suggest : '-',
+    type: hasSuggestion ? productType(suggest) : '-',
     because,
     reason,
     price,
@@ -191,12 +224,14 @@ export function customerFacts(
   };
 }
 
-export function factsToInput(f: WriterFacts): string {
+/** The text the model was trained on; for the Bangla writer the three word-facts are in Bangla (to_input_bn in make_data_bn.py). */
+export function factsToInput(f: WriterFacts, lang: WriterLang = 'en'): string {
+  const bn = lang === 'bn';
   const fields: [string, string][] = [
     ['segment', f.segment], ['tone', f.tone], ['name', f.name], ['shop', f.shop],
-    ['buys', f.buys.length ? f.buys.join('; ') : '-'], ['orders', String(f.orders)], ['last order', f.lastOrder],
-    ['usual gap', f.usualGap], ['suggest', f.suggest], ['type', f.type], ['because', f.because], ['reason', f.reason],
-    ['price', f.price], ['was', f.was], ['offer', f.offer], ['code', f.code],
+    ['buys', f.buys.length ? f.buys.join('; ') : '-'], ['orders', String(f.orders)], ['last order', bn ? bnWhen(f.lastOrder) : f.lastOrder],
+    ['usual gap', bn ? bnGap(f.usualGap) : f.usualGap], ['suggest', f.suggest], ['type', f.type], ['because', f.because], ['reason', f.reason],
+    ['price', f.price], ['was', f.was], ['offer', bn ? bnOffer(f.offer) : f.offer], ['code', f.code],
   ];
   return fields.map(([k, v]) => `${k}: ${v}`).join(' | ');
 }

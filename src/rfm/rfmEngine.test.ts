@@ -38,7 +38,7 @@ import {
   calculateCampaignForecast,
   generateAllSegmentScenarios,
 } from './campaignForecaster';
-import { DEFAULT_CAMPAIGN_CONFIGS } from './campaignDefaults';
+import { BANGLA_TEMPLATES, DEFAULT_CAMPAIGN_CONFIGS, EARLY_MESSAGES_BN, OFFER_OPTIONS, offerPct, offerPrice, withOfferPct } from './campaignDefaults';
 
 test('Phone normalization handles +880, 88, 0088, and spaces', () => {
   assert.equal(normalizePhoneNumber('+8801711234567'), '01711234567');
@@ -786,4 +786,27 @@ test('Behaviour prediction: BG/NBD and Gamma-Gamma match the published CDNOW res
   const model = bm.predictBehaviour(cleanedRows, 90);
   assert.ok(model && model.customers.length > 0);
   for (const p of model!.customers) assert.ok(p.pActive >= 0 && p.pActive <= 1 && p.expectedOrders >= 0 && Number.isFinite(p.predictedSpend));
+});
+
+test('picking a suggested discount updates the offer, code, message and price together', () => {
+  for (const [persona, o] of Object.entries(OFFER_OPTIONS)) assert.ok(o.options.includes(o.suggested), persona);
+  const vip = DEFAULT_CAMPAIGN_CONFIGS['Champions (VIP Loyalists)'];
+  assert.equal(offerPct(vip), 20);
+  const five = withOfferPct(vip, 5);
+  assert.equal(five.discountValue, '5% VIP Early Access');
+  assert.equal(five.discountCode, 'VIP-CURATED5');
+  assert.ok(five.messageTemplate.includes('5% privilege') && !five.messageTemplate.includes('20%'));
+  assert.equal(offerPrice(1000, 800, five), 950);
+  assert.equal(offerPrice(undefined, 800, five), 800);
+  assert.equal(withOfferPct({ ...vip, discountValue: 'Free delivery', discountCode: 'FREE' }, 10).discountValue, '10% Off Free delivery');
+});
+
+test('Bangla messages carry the same percentage and fill-in words as the English ones', () => {
+  for (const [persona, cfg] of Object.entries(DEFAULT_CAMPAIGN_CONFIGS)) {
+    const bn = BANGLA_TEMPLATES[persona as keyof typeof BANGLA_TEMPLATES];
+    assert.ok(bn.includes(`${offerPct(cfg)}%`), `${persona}: percentage`);
+    for (const tag of ['{name}', '{shop_name}', '{suggested_product}', '{suggested_price}', '{discount_code}']) assert.ok(bn.includes(tag), `${persona}: ${tag}`);
+    assert.ok(withOfferPct({ ...cfg, messageTemplate: bn }, 5).messageTemplate.includes('5%'));
+  }
+  for (const m of Object.values(EARLY_MESSAGES_BN)) assert.ok(m.includes('{name}') && m.includes('{shop_name}'));
 });

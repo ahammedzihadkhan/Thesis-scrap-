@@ -361,5 +361,101 @@
       "Holm p": 0.024,
       "Significant (Holm 5%)": true
     }
-  ]
+  ],
+  "k_rule": {
+    "UCI Online Retail": {
+      "rule": 6,
+      "best": 8,
+      "silhouette": 2,
+      "dbi": 2
+    },
+    "Online Retail II year 1": {
+      "rule": 6,
+      "best": 8,
+      "silhouette": 2,
+      "dbi": 2
+    },
+    "CDNOW": {
+      "rule": 8,
+      "best": 8,
+      "silhouette": 2,
+      "dbi": 2
+    },
+    "Olist": {
+      "rule": 3,
+      "best": 4,
+      "silhouette": 2,
+      "dbi": 2
+    },
+    "TheLook": {
+      "rule": 8,
+      "best": 8,
+      "silhouette": 2,
+      "dbi": 2
+    },
+    "Open e-commerce 1.0": {
+      "rule": 7,
+      "best": 8,
+      "silhouette": 2,
+      "dbi": 2
+    }
+  },
+  "k_wide": {
+    "UCI Online Retail": {
+      "rule": 6,
+      "best": 8
+    },
+    "Online Retail II year 1": {
+      "rule": 7,
+      "best": 8
+    },
+    "CDNOW": {
+      "rule": 11,
+      "best": 12
+    },
+    "Olist": {
+      "rule": 3,
+      "best": 4
+    },
+    "TheLook": {
+      "rule": 8,
+      "best": 12
+    },
+    "Open e-commerce 1.0": {
+      "rule": 12,
+      "best": 12
+    }
+  },
+  "k_size_median": {
+    "UCI Online Retail": {
+      "250": 3.0,
+      "500": 4.0,
+      "1000": 5.0,
+      "2000": 5.5
+    },
+    "Online Retail II year 1": {
+      "250": 2.5,
+      "500": 4.0,
+      "1000": 4.0,
+      "2000": 6.0
+    },
+    "CDNOW": {
+      "250": 2.0,
+      "500": 3.0,
+      "1000": 3.0,
+      "2000": 6.0
+    },
+    "Olist": {},
+    "TheLook": {
+      "250": 2.0,
+      "500": 2.0,
+      "1000": 4.0,
+      "2000": 4.0
+    },
+    "Open e-commerce 1.0": {
+      "500": 4.0,
+      "1000": 5.0,
+      "2000": 4.0
+    }
+  }
 }

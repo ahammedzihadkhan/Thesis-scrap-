@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkMessage, layoutMessage } from './aiWording';
-import { ago, customerFacts, every, factsToInput, firstName, money, offerText, priced, shortTitle, tidyProduct, topProducts, type WriterFacts } from './messageFacts';
+import { ago, bnGap, bnOffer, bnWhen, customerFacts, every, factsToInput, firstName, money, offerText, priced, shortTitle, tidyProduct, topProducts, type WriterFacts } from './messageFacts';
 import { DEFAULT_CAMPAIGN_CONFIGS } from '../rfm/campaignDefaults';
 import { productType } from '../rfm/productType';
 import type { CleanedTransaction, CustomerRFMTD } from '../rfm/types';
@@ -95,4 +95,74 @@ test('AI messages get WhatsApp line breaks after the greeting and before the sig
     'Dear Rahim,\nWe hope you are well.\nKind regards, Dhaka Threads');
   assert.equal(layoutMessage('Hi Rahim! Try Panjabi - just Tk 950. - Dhaka Threads'), 'Hi Rahim!\nTry Panjabi - just Tk 950.\n- Dhaka Threads');
   assert.equal(layoutMessage('Hello! Reply YES to grab yours. Warmly, Dhaka Threads'), 'Hello!\nReply YES to grab yours.\nWarmly, Dhaka Threads');
+});
+
+// ---- the Bangla writer (scripts/writer/make_data_bn.py)
+const bnFacts: WriterFacts = { segment: 'regular', tone: 'friendly', name: 'Rahim', shop: 'Dhaka Threads', buys: ['Silk Lungi'], orders: 6,
+  lastOrder: '2 weeks ago', usualGap: 'every 3 weeks', suggest: 'Cotton Panjabi', type: 'fashion', because: 'Silk Lungi',
+  reason: 'bought together', price: 'Tk 1,063', was: 'Tk 1,250', offer: '15% off', code: 'PAIR-IT15' };
+
+test('Bangla writer input: last order, usual gap and offer are given in Bangla, the rest as for English', () => {
+  assert.equal(factsToInput(bnFacts, 'bn'), 'segment: regular | tone: friendly | name: Rahim | shop: Dhaka Threads | buys: Silk Lungi | orders: 6 | ' +
+    'last order: 2 সপ্তাহ আগে | usual gap: প্রতি 3 সপ্তাহে | suggest: Cotton Panjabi | type: fashion | because: Silk Lungi | reason: bought together | ' +
+    'price: Tk 1,063 | was: Tk 1,250 | offer: 15% ছাড় | code: PAIR-IT15');
+  assert.equal(factsToInput(bnFacts), factsToInput(bnFacts, 'en'), 'English input is unchanged');
+  assert.deepEqual(['1 day ago', '13 days ago', '11 months ago', 'over a year ago', '2 years ago', '-'].map(bnWhen),
+    ['1 দিন আগে', '13 দিন আগে', '11 মাস আগে', 'এক বছরেরও বেশি আগে', '2 বছর আগে', '-']);
+  assert.deepEqual(['every day', 'every 6 days', 'every week', 'every 3 weeks', 'every month', 'every 2 months', 'about once a year', '-'].map(bnGap),
+    ['প্রতিদিন', 'প্রতি 6 দিনে', 'প্রতি সপ্তাহে', 'প্রতি 3 সপ্তাহে', 'প্রতি মাসে', 'প্রতি 2 মাসে', 'বছরে প্রায় একবার', '-']);
+  assert.deepEqual(['15% off', '12.5% off', 'free delivery', 'a free gift', 'a special discount', '-'].map(bnOffer),
+    ['15% ছাড়', '12.5% ছাড়', 'ফ্রি ডেলিভারি', 'ফ্রি উপহার', 'বিশেষ ছাড়', '-']);
+});
+
+test('Bangla writer: Bangla-script names, shops and products are allowed only for it', () => {
+  assert.equal(firstName('মোঃ রহিম উদ্দিন', 'bn'), 'রহিম');
+  assert.equal(firstName('মোঃ রহিম উদ্দিন'), '-', 'the English writer cannot write Bangla script');
+  assert.equal(firstName('Customer 17850', 'bn'), '-');
+  const c = { customerKey: 'k9', customerName: 'মোছাঃ ফারজানা', persona: 'Loyal & Promising Regulars', frequency: 4, recency: 20, interPurchaseTime: 30 } as CustomerRFMTD;
+  const o = { tone: 'friendly' as const, shop: 'রংধনু ফ্যাশন', buys: ['হিজাব'], config: DEFAULT_CAMPAIGN_CONFIGS['Loyal & Promising Regulars'],
+    suggest: 'জামদানি শাড়ি', originalPrice: 2000, currency: '৳', reason: 'same kind' as const, basis: 'হিজাব' };
+  const f = customerFacts(c, { ...o, lang: 'bn' });
+  assert.deepEqual([f.name, f.shop, f.suggest, f.because, f.price, f.was, f.type], ['ফারজানা', 'রংধনু ফ্যাশন', 'জামদানি শাড়ি', 'হিজাব', 'Tk 1,700', 'Tk 2,000', 'other']);
+  const e = customerFacts(c, o);
+  assert.deepEqual([e.name, e.shop, e.suggest, e.price], ['-', 'our shop', '-', '-'], 'English writer: no Bangla script');
+  assert.equal(customerFacts(c, { ...o, shop: '', lang: 'bn' }).shop, 'আমাদের দোকান');
+  const rows = [['k1', 'SILK LUNGI'], ['k1', 'জামদানি শাড়ি']].map(([unifiedKey, productName]) => ({ unifiedKey, productName })) as CleanedTransaction[];
+  assert.deepEqual(topProducts(rows, 3, 'bn').get('k1'), ['Silk Lungi', 'জামদানি শাড়ি']);
+  assert.deepEqual(topProducts(rows).get('k1'), ['Silk Lungi']);
+});
+
+test('Bangla fact check: same rules as English, applied to Bangla wording', () => {
+  const f = bnFacts;
+  const good = 'প্রিয় Rahim! আপনি সাধারণত প্রতি 3 সপ্তাহে অর্ডার করেন, তাই সবার আগে আপনার কথাই মনে পড়ল! ' +
+    'যারা "Silk Lungi" কিনেছেন, তারা "Cotton Panjabi"-ও কিনেছেন। কোড PAIR-IT15 ব্যবহার করলে 15% ছাড়: Tk 1,250-এর বদলে মাত্র Tk 1,063। ' +
+    'রিপ্লাই করুন, বাকি সব আমরা সামলে নেব। - Dhaka Threads';
+  assert.deepEqual(checkMessage(f, good, 'bn'), { ok: true, personal: true, problems: [] });
+  assert.ok(!checkMessage(f, good).ok, 'the offer must be in the language of the model (15% off is not in a Bangla message)');
+  assert.ok(checkMessage(f, good.replace('Tk 1,063', 'Tk 1,150'), 'bn').problems.some((p) => p.includes('1,150')), 'a changed price is caught');
+  assert.ok(!checkMessage(f, good.replace('15% ছাড়', '15% মূল্যছাড়'), 'bn').ok, 'the offer in its Bangla form is required');
+  assert.ok(!checkMessage(f, good.replace('PAIR-IT15', 'PAIR-IT20'), 'bn').ok, 'a changed code is caught');
+  assert.ok(!checkMessage(f, good.replace('প্রতি 3', 'প্রতি ৩'), 'bn').ok, 'Bangla digits are never in the facts');
+  assert.ok(!checkMessage(f, good.replace('বাকি সব আমরা সামলে নেব', 'আমাদের কাছে বাকি নেই'), 'bn').ok, 'a negation is caught');
+  assert.ok(!checkMessage(f, good + ' আজই অর্ডার করুন!', 'bn').ok, 'invented urgency is caught');
+  assert.ok(!checkMessage(f, good.replace('বাকি সব আমরা সামলে নেব', 'শুধু 7টি বাকি আছে'), 'bn').ok, 'an invented number is caught');
+  assert.ok(!checkMessage({ ...f, reason: 'same kind' }, good, 'bn').ok, 'what other customers bought, only with the "bought together" reason');
+  const best = good.replace('যারা "Silk Lungi" কিনেছেন, তারা "Cotton Panjabi"-ও কিনেছেন।', '"Cotton Panjabi" আমাদের একটি বেস্ট সেলার।');
+  assert.ok(!checkMessage(f, best, 'bn').ok, 'a best seller, only with the "best seller" reason');
+  assert.ok(checkMessage({ ...f, reason: 'best seller', because: '-' }, best, 'bn').ok);
+  const second = good.replace('রিপ্লাই করুন', 'আপনার দ্বিতীয় অর্ডারে স্বাগতম। রিপ্লাই করুন');
+  assert.ok(!checkMessage(f, second, 'bn').ok, '"second order" is caught for a customer with 6 orders');
+  assert.ok(checkMessage({ ...f, orders: 1 }, second, 'bn').problems.every((p) => !p.includes('first or second')), '...and allowed for a customer with one order');
+  assert.ok(!checkMessage(f, good.replace('রিপ্লাই করুন', 'কোড PAIR-IT15 ব্যবহার করলে 15% ছাড়: Tk 1,250-এর বদলে মাত্র Tk 1,063। রিপ্লাই করুন'), 'bn').ok, 'a repeated sentence is caught');
+  // a full stop inside a product name is not a sentence end
+  const g: WriterFacts = { ...f, suggest: 'Organic No. 5 Toner', because: 'Organic No. 5 Cream', buys: ['Organic No. 5 Cream'] };
+  const withDots = 'প্রিয় Rahim! যারা "Organic No. 5 Cream" কিনেছেন, তারা "Organic No. 5 Toner"-ও কিনেছেন। ' +
+    'কোড PAIR-IT15 ব্যবহার করলে 15% ছাড়: Tk 1,250-এর বদলে মাত্র Tk 1,063। - Dhaka Threads';
+  assert.deepEqual(checkMessage(g, withDots, 'bn').problems, []);
+});
+
+test('Bangla messages get WhatsApp line breaks after the greeting and before the sign-off', () => {
+  assert.equal(layoutMessage('প্রিয় Rahim! আপনাকে মিস করছি। শুভেচ্ছান্তে, Dhaka Threads', 'bn'), 'প্রিয় Rahim!\nআপনাকে মিস করছি।\nশুভেচ্ছান্তে, Dhaka Threads');
+  assert.equal(layoutMessage('হ্যালো! নিতে চান? শুধু রিপ্লাই করুন! - Dhaka Threads', 'bn'), 'হ্যালো!\nনিতে চান? শুধু রিপ্লাই করুন!\n- Dhaka Threads');
+  assert.equal(layoutMessage('Dhaka Threads থেকে শুভেচ্ছা! আবার আসুন। - Dhaka Threads', 'bn'), 'Dhaka Threads থেকে শুভেচ্ছা!\nআবার আসুন।\n- Dhaka Threads');
 });

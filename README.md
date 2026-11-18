@@ -22,7 +22,7 @@ cd thesis/notebook
 python build_notebook.py                 # builds and runs Extended_RFM_Thesis.ipynb (~30 min)
 ```
 
-Or run it in Google Colab without installing anything: [open the notebook in Colab](https://colab.research.google.com/github/ahammedzihadkhan/Thesis-scrap-/blob/main/thesis/notebook/Extended_RFM_Thesis.ipynb), then **Runtime → Run all**. The first cell fetches the project and the datasets download automatically, except CDNOW, whose site refuses automated downloads: download `CDNOW_master.zip` in your browser from [brucehardie.com/datasets](https://www.brucehardie.com/datasets/) and upload it to `/content/kroypulse/thesis/data/cdnow/` (in Colab: Files panel) before running Part 17. Part 18 downloads Open e-commerce 1.0 (313 MB, public domain) from Harvard Dataverse by itself.
+Or run it in Google Colab without installing anything: [open the notebook in Colab](https://colab.research.google.com/github/ahammedzihadkhan/Thesis-scrap-/blob/main/thesis/notebook/Extended_RFM_Thesis.ipynb), then **Runtime → Run all**. The first cell fetches the project and the datasets download automatically; when the CDNOW site refuses the download (it often refuses Colab), Part 17 uses the identical copy in the open-source lifetimes package. Part 18 downloads Open e-commerce 1.0 (313 MB, public domain) from Harvard Dataverse by itself.
 
 The UCI Online Retail file is downloaded automatically the first time (or place `online_retail.csv` in `thesis/data/`).
 Outputs go to `thesis/outputs/figures`, `thesis/outputs/tables` (CSV + LaTeX) and `thesis/outputs/results.json`.
@@ -39,6 +39,7 @@ Headline results (UCI Online Retail, 4,338 customers, K-Means k = 4 on five log-
 | Repurchase AUC with 30 / 60 / 90 / 180 days of history | 0.64 / 0.69 / 0.72 / 0.77 |
 | External validation: Olist (Brazil, 2016–18, 93,358 customers, 97 % one-time) | K-Means the only valid one of 8 algorithms; AUC k=4 0.575 vs guest rule 0.535 |
 | Recent real data: Open e-commerce 1.0 (Amazon.com, US, 2018–22, 5,026 customers; notebook Part 18) | Same protocol, cutoff 1 Jan 2022: AUC k=4 0.862 vs guest rule 0.520 and k=2 0.799 (both significant after Holm); plain RFM k=4 slightly higher (0.874) |
+| How many segments? Six datasets (notebook Part 19) | Silhouette and Davies–Bouldin pick k = 2 on all six; the smallest k not significantly less predictive than the best is 3–8 (Olist 3, UCI 6, CDNOW 8); k = 4 keeps 63–100 % of the achievable gain. On samples the size of a small shop (500–1,000 customers) the rule picks 3–5; with k up to 12 it picks 3–12 (Part 19b) |
 | Account-age study: TheLook (synthetic, 100k users with account-creation time) | Segments ≈ chance for accounts < 90 days, rising with account age; profile parameters raise AUC 0.613 → 0.667; never-bought users: profile predicts first purchase, AUC 0.688 |
 
 ## 2. Run KroyPulse on your own computer
@@ -73,7 +74,7 @@ For real use, choose **Create the owner account** on the same page (accounts are
 
 ### Offline AI writer (optional)
 
-In **Send messages**, choose a tone and press **Write … messages with AI**. For each customer, the model writes an English message from:
+In **Send messages**, choose a tone and press **Write … messages with AI**. For each customer, the model writes a message in the language chosen for the send (English or Bangla) from:
 - the products they buy most;
 - how many orders they have placed and how often;
 - when they last ordered;
@@ -100,10 +101,10 @@ Every message is fact-checked before use:
 - **Only supported claims:** "customers who bought X also bought Y" only when the shop's data shows it, "best seller" only for best sellers, and never a deadline or a stock level.
 
 Results on 600 customers the model never saw ([t_ai_writer.csv](thesis/outputs/tables/t_ai_writer.csv)):
-- **Fact check:** 98.0–100% of the final messages passed (the rest keep the template).
-- **Personal:** 95.3–97.7% used the customer's name and named a product they had bought.
-- **Persuasion the facts back:** 95–96% said what buyers of the customer's product chose, when the data showed it; every discounted offer showed the old price.
-- **Speed:** 0.75–0.9 s per message on a laptop CPU (1.2–1.34 drafts per message), or a few seconds per customer in the browser.
+- **Fact check:** 99.7–100% of the final messages passed (the rest keep the template).
+- **Personal:** 97.0–97.7% used the customer's name and named a product they had bought.
+- **Persuasion the facts back:** 96–99% said what buyers of the customer's product chose, when the data showed it; every discounted offer showed the old price.
+- **Speed:** 0.78–0.87 s per message on a laptop CPU (1.16–1.29 drafts per message), or a few seconds per customer in the browser.
 - **Baseline:** a general small model, SmolLM2-360M prompted with the same facts, passed for none of 30 customers.
 
 The training examples come from a phrase grammar ([scripts/writer/make_data.py](scripts/writer/make_data.py)) filled with synthetic Bangladeshi shop customers and real UCI customers. Every fact in a training message is copied from that customer's data, so the model never learns to invent one, and every generated example must pass the app's fact check.
@@ -119,7 +120,26 @@ scripts/writer/.venv/Scripts/python scripts/writer/export.py      # -> public/mo
 npx tsx scripts/evalAiWriter.ts                                   # fact-check pass rate and speed on unseen customers
 ```
 
-On macOS or Linux, use `scripts/writer/.venv/bin/python`. Then run `npm start` again. (The shipped model was trained in two stages: 1,500 steps on an earlier grammar, then 1,200 steps on this one with `--init scripts/writer/out/model_v1 --lr 5e-4 --checkpointing`. The single from-scratch command above has not been run; check its result with the evaluation script.)
+On macOS or Linux, use `scripts/writer/.venv/bin/python`. Then run `npm start` again. (The shipped model was trained in stages: 1,500 steps on an earlier grammar, then 1,200 steps on this one with `--init scripts/writer/out/model_v1 --lr 5e-4 --checkpointing`, and later 3,000 more steps at `--lr 3e-4` on the revised grammar. The single from-scratch command above has not been run; check its result with the evaluation script.)
+
+#### Bangla writer
+
+Bangla has its own model, [kroypulse-writer-bn](public/models/kroypulse-writer-bn), because Flan-T5 has no Bengali script. It starts from Google's multilingual [mT5-small](https://huggingface.co/google/mt5-small) (Apache-2.0) with the vocabulary cut from 250,100 to 10,640 tokens (55M parameters, about 62 MB in the browser). It is loaded only when Bangla is chosen. It uses the same facts and the same rules as the English writer, with a Bangla fact check (offer in Bangla form, no Bangla digits, same bans on invented urgency, negations and unsupported claims). Names, shop and product names may be in Bangla or Latin script.
+
+Results on customers the model never saw ([t_ai_writer_bn.csv](thesis/outputs/tables/t_ai_writer_bn.csv)), best of three drafts as used in the app:
+- **Fact check:** 96.7% passed on 300 real UCI customers and 89.7% on 300 synthetic shops with unseen names (the Bangla templates pass 15% and 16%, because they do not name a bought product). Failing drafts keep the template.
+- **Personal:** 96.7% (real) and 84.7% (synthetic) used the name and named a bought product.
+- **Speed:** about 1.1–1.3 s per message on a laptop CPU.
+
+The Bangla wording comes from a phrase grammar written for this project, not by a native-speaker editor: have a native speaker read the phrases in [make_data_bn.py](scripts/writer/make_data_bn.py) before real use. Build (CPU only, about 4.5 hours for 1,800 steps):
+
+```bash
+scripts/writer/.venv/Scripts/python scripts/writer/make_data_bn.py
+scripts/writer/.venv/Scripts/python scripts/writer/prune_vocab.py   # downloads mT5-small once (about 1.2 GB)
+scripts/writer/.venv/Scripts/python scripts/writer/train.py --init scripts/writer/out/mt5-bn --tokenizer scripts/writer/out/mt5-bn --data scripts/writer/out/data_bn --out scripts/writer/out/bn --steps 1800 --batch 8 --lr 1e-3 --checkpointing --threads 3 --rest 75
+scripts/writer/.venv/Scripts/python scripts/writer/export.py --model scripts/writer/out/bn/model --dest public/models/kroypulse-writer-bn
+npx tsx scripts/evalAiWriter.ts 300 0 bn
+```
 
 ### Data model
 

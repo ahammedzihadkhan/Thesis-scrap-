@@ -1,0 +1,7 @@
+Dataset,250 customers,500 customers,"1,000 customers","2,000 customers",All customers
+UCI Online Retail,3 (2-4),4 (3-5),5 (4-6),5.5 (5-6),"6 (n = 3,317)"
+Online Retail II year 1,2.5 (2-3),4 (3-4.25),4 (4-5.25),6 (5.75-6),"6 (n = 2,973)"
+CDNOW,2 (2-3),3 (3-3.25),3 (3-3.25),6 (4-7),"8 (n = 23,500)"
+Olist,n/a,n/a,n/a,n/a,"3 (n = 55,525)"
+TheLook,2 (2-3),2 (2-4),4 (3-4),4 (4-4),"8 (n = 45,303)"
+Open e-commerce 1.0,n/a,4 (3-4),5 (4-6),4 (4-5.25),"7 (n = 4,991)"
